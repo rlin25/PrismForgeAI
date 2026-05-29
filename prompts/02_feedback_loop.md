@@ -214,7 +214,7 @@ If the file exists, update it with: pinned versions table from `requirements.txt
 ### 5. `docs/GLOSSARY.md`
 
 - Update any term definitions that no longer match the implementation. Cross-reference with the actual source files, not the design documents.
-- Do not add new terms — that is the job of `04_rewrite_glossary.md`.
+- Do not add new terms — that is the job of `03_rewrite_glossary.md`.
 - Do not alter definitions that remain accurate.
 
 ### 6. `prompts/01_design_methodology.md`

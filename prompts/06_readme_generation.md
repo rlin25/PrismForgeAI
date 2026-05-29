@@ -190,11 +190,11 @@ List prompts in batch run order (see `prompts/BATCH.md` for the authoritative se
 | Batch step | File | Phase | Produced |
 |---|---|---|---|
 | 1 | `01_design_methodology.md` | Design phase (Phases 1–3) | Behavioral instructions and methods governing human-AI collaboration throughout design |
-| 2 | `05_feedback_loop.md` | Phase 7 | Updated design documents reconciled against the implemented codebase |
-| 3 | `04_rewrite_glossary.md` | Post-implementation (Phase 7+) | Polished glossary written for two audiences: recruiter and returning developer |
-| 4 | `03_generate_walkthrough.md` | Post-implementation (Phase 7+) | `walkthrough/` directory of annotated design rationale for every source file |
-| 5 | `06_generate_diagrams.md` | Post-implementation (Phase 7+) | Mermaid architecture diagram for README, Mermaid file flow diagram for walkthrough |
-| 6 | `02_readme_generation.md` | Post-implementation (Phase 7+) | README.md, docs/DESIGN.md, docs/INTERFACE_CONTRACT.md, docs/GLOSSARY.md, prompts/README.md |
+| 2 | `02_feedback_loop.md` | Phase 7 | Updated design documents reconciled against the implemented codebase |
+| 3 | `03_rewrite_glossary.md` | Post-implementation (Phase 7+) | Polished glossary written for two audiences: recruiter and returning developer |
+| 4 | `04_generate_walkthrough.md` | Post-implementation (Phase 7+) | `walkthrough/` directory of annotated design rationale for every source file |
+| 5 | `05_generate_diagrams.md` | Post-implementation (Phase 7+) | Mermaid architecture diagram for README, Mermaid file flow diagram for walkthrough |
+| 6 | `06_readme_generation.md` | Post-implementation (Phase 7+) | README.md, docs/DESIGN.md, docs/INTERFACE_CONTRACT.md, docs/GLOSSARY.md, prompts/README.md |
 
 ---
 
