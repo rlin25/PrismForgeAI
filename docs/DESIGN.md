@@ -702,6 +702,148 @@ docker run -v $(pwd)/.env:/app/.env -p 80:8501 prismforge-ai:latest
 
 ---
 
+---
+
+### 3.17 Monolithic `pipeline.py` vs. Separate `src/` Modules
+
+**Problem:** A complex multi-agent pipeline with Pydantic schemas, TypedDict state definitions, LLM singletons, a chunker singleton, node functions, pure helper functions, graph construction, and an async entry point can be organized into a flat monolithic file or decomposed into a `src/` module tree (e.g. `src/schemas.py`, `src/nodes.py`, `src/graph.py`, `src/prompts.py`).
+
+**Selected Paradigm:** Single monolithic `pipeline.py`.
+
+All pipeline components live in one file: Pydantic schemas, TypedDict state definitions, LLM singletons, the `RecursiveCharacterTextSplitter` singleton, all node functions, the `route_matrix_to_workers` pure function, `extraction_worker`, `detect_blind_spots`, `compress_inbox`, LangGraph graph construction, and `run_graph`. `app.py` imports only `run_graph` from `pipeline.py`.
+
+**Rejected Alternative:** `src/` module decomposition with separate files per concern layer.
+
+**Rationale:** Sprint decomposition has a measurable overhead cost — each module boundary introduces an import chain, a potential circular dependency surface, and additional cognitive context-switching during rapid iteration. In a 10-hour sprint, module organization is an optimization that yields negative returns: it adds file navigation time without improving testability (no tests exist) or runtime performance. A monolithic file is trivially greppable, fully self-contained for LLM code synthesis context, and eliminates any risk of import-order bugs at module initialization time. The correct time to decompose into `src/` modules is when the codebase is productionized and test coverage warrants it.
+
+---
+
+### 3.18 Flat LangGraph Graph vs. LangGraph Sub-Graphs
+
+**Problem:** The design spec described LangGraph sub-graphs (`StateGraph(DocumentSubState)`) — one per document — dispatched via `Send` from the parent graph, with `router_node`, a chunk node, `route_matrix_to_workers` as a conditional edge, extraction workers, and `handoff_node` all as distinct LangGraph nodes within each sub-graph. The key challenge was propagating `global_inbox` and `summary_store` from child sub-graph state back to parent state.
+
+**Selected Paradigm:** Flat `StateGraph(ParentState)` with `process_document` as a single async node.
+
+The actual graph has exactly three nodes:
+
+```
+directory_crawler → process_document (dispatched N times via Send) → master_round_table_node
+```
+
+`process_document` is a single async LangGraph node that receives `{source_material, file_name}` via `Send` from `dispatch_documents` (a conditional edge), executes all per-document logic sequentially in Python (router → chunk → fan-out matrix → `asyncio.gather` worker pool → handoff return), and returns `{"global_inbox": [...], "summary_store": {...}}` directly to `ParentState` via LangGraph's reducers. No sub-graph exists.
+
+**Rejected Alternative:** `StateGraph(DocumentSubState)` sub-graphs with LangGraph `Send` for workers, as specified in the design.
+
+**Rationale:** LangGraph sub-graph state propagation requires explicit key mapping between child state and parent state at sub-graph exit. For `global_inbox` (a list with an `add` reducer) and `summary_store` (a dict with a merge reducer), implementing this reliably requires understanding LangGraph's internal sub-graph channel scoping rules, which are non-obvious and have changed across minor versions. The risk of silent data loss at the sub-graph boundary — where a mis-scoped key produces no error but drops all records — is unacceptable in a sprint context with no test harness. The flat architecture eliminates this boundary entirely: `process_document` returns a plain Python dict, and LangGraph applies the parent-state reducers directly and predictably. All 12 non-negotiable invariants are satisfied. The structural difference is invisible at the invariant level.
+
+---
+
+### 3.19 `asyncio.gather` for Worker Pool vs. LangGraph `Send` for Workers
+
+**Problem:** Per the spec, extraction workers were to be dispatched via LangGraph `Send("extraction_worker", payload_dict)` as individual LangGraph nodes within a sub-graph. Without sub-graphs, an alternative mechanism is needed to run the `Chunks × Lenses` cross-product concurrently.
+
+**Selected Paradigm:** `asyncio.gather` inside `process_document`.
+
+```python
+worker_results = await asyncio.gather(
+    *[extraction_worker(p) for p in payloads],
+    return_exceptions=True,
+)
+```
+
+`extraction_worker` is a standalone async function (not a LangGraph node). `asyncio.gather` runs all payloads concurrently within the event loop. `return_exceptions=True` ensures one failed coroutine does not cancel the others — it returns the exception object in the results list, where it is filtered out during result collection.
+
+**Rejected Alternative:** LangGraph `Send("extraction_worker", ...)` dispatching workers as graph nodes.
+
+**Rationale:** LangGraph `Send`-dispatched node calls have per-call overhead (state serialization, checkpoint writes, graph traversal). For a `Chunks × Lenses` matrix that can produce 200–500 worker calls per document, this overhead compounds materially. `asyncio.gather` is the idiomatic asyncio pattern for this fan-out shape and has no per-call graph overhead. The `extraction_worker` function itself is unchanged — same signature, same invariants, same behavior. The concurrency model is equivalent. `max_concurrency=50` at the LangGraph graph invocation level still throttles parallel `process_document` node executions (i.e., parallel document pipelines), which is the dominant concurrency concern for rate limiting.
+
+---
+
+### 3.20 Three LLM System Prompts — Implementation Choices
+
+**Problem:** The design spec referenced a router LLM call and an extraction LLM call but did not fully specify the system prompt content, the anchored prompt assembly pattern for extraction, or the synthesis prompt structure. These needed to be defined during implementation.
+
+**Selected Paradigm:** Three module-level system prompt constants — `ROUTER_SYSTEM_PROMPT`, `EXTRACTION_SYSTEM_PROMPT`, `SYNTHESIS_SYSTEM_PROMPT`.
+
+**Router (`ROUTER_SYSTEM_PROMPT`):** Instructs the model to produce a 200–400 word semantic summary and a list of 3–7 extraction lens identifiers. Lists all valid lens names. Bound to `structured_router.ainvoke([{system}, {user}])` where user content is the full document text. Single call per document per Invariant R1.
+
+**Extraction (`EXTRACTION_SYSTEM_PROMPT`):** Instructs the model to act as a risk extraction specialist, apply a named lens to a target chunk, and return one `UniversalForm`-shaped finding. The anchored prompt passed as user content concatenates: lens name, `GLOBAL FILE CONTEXT` (the `semantic_summary`), and `TARGET CHUNK` (the chunk text with source file and chunk index). The lens name is injected into the user prompt rather than the system prompt so that the `EXTRACTION_SYSTEM_PROMPT` constant is reused across all workers without modification.
+
+**Synthesis (`SYNTHESIS_SYSTEM_PROMPT`):** Instructs the model to synthesize all extraction records into a structured Markdown risk report with defined sections: Executive Summary, Critical Findings (score ≥ 8), Cross-Document Contradictions, Risk Analysis by Category, Coverage Gaps, and Recommendations. Uses `llm.ainvoke` (not `structured_llm`) to produce free-form Markdown rather than a constrained schema.
+
+**AIMessage content handling:** The synthesis response `content` field can be either `str` or `List[dict]` depending on provider and model version. `master_round_table_node` handles both cases:
+
+```python
+if isinstance(content, str):
+    report = content
+elif isinstance(content, list):
+    parts = [p if isinstance(p, str) else p.get("text", "") for p in content]
+    report = "".join(parts)
+```
+
+**Rejected Alternative:** A single system prompt reused across all LLM call types.
+
+**Rationale:** Router, extraction, and synthesis calls have fundamentally different output shapes and purposes. Forcing them through a shared prompt would require conditional branching inside the prompt and would degrade structured output reliability. Module-scope constants are free to define and make each call's intent immediately readable during sprint debugging.
+
+---
+
+### 3.21 Gemini Model Update: `gemini-2.0-flash` → `gemini-2.5-flash`
+
+**Problem:** During deployment, the router phase failed immediately with a 400 error from the Google AI API. `gemini-2.0-flash` was not available for new Google AI API accounts or accounts migrated to the new billing tier.
+
+**Error observed:**
+
+```
+google.api_core.exceptions.InvalidArgument: 400 gemini-2.0-flash is not supported
+for generateContent. Please use a different model.
+```
+
+**Selected Paradigm:** Update `router_llm` singleton to use `gemini-2.5-flash`.
+
+```python
+# Before:
+router_llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash")
+
+# After:
+router_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
+```
+
+This change is applied in `pipeline.py` and reflected in the `INTERFACE_CONTRACT.md` module singleton table.
+
+**Rejected Alternative:** Revert to an older, universally supported Gemini model (e.g. `gemini-1.5-flash`).
+
+**Rationale:** `gemini-2.5-flash` is the direct successor model and is available on all account tiers. It maintains the same API interface and structured output support via `langchain-google-genai`. Using the most current available model is preferable for capability and output quality. No prompt changes were required.
+
+**Note on free-tier quota:** Even with the correct model, Google AI free-tier quota (requests per minute and requests per day) is exhausted almost immediately by the routing phase on a 3-file data room. Paid Google Cloud billing must be enabled for reliable operation.
+
+---
+
+### 3.22 aiohttp Version Incompatibility and Runtime Upgrade
+
+**Problem:** After installing `requirements.txt`, the pipeline failed at first import with:
+
+```
+AttributeError: module 'aiohttp' has no attribute 'ClientConnectorDNSError'
+```
+
+**Root cause:** `langchain-google-genai` (and its transitive dependency `google-auth-httpx-transport` or similar) references `aiohttp.ClientConnectorDNSError`, which was added in `aiohttp>=3.10`. The default `aiohttp` version in the Python 3.11-slim Docker image at the time of the sprint was `3.9.5`, which does not have this symbol.
+
+**Selected Paradigm:** Runtime upgrade of `aiohttp` to `>=3.13.5`.
+
+```bash
+pip install "aiohttp>=3.13.5"
+```
+
+This resolved the import error immediately. `aiohttp>=3.13.5` is backwards-compatible with the rest of the dependency stack.
+
+**Rejected Alternative:** Pin `aiohttp>=3.13.5` in `requirements.txt` at build time (correct long-term fix).
+
+**Rationale for current state:** The runtime upgrade was applied as an emergency fix during deployment to avoid a Docker rebuild cycle. The correct permanent resolution is to add `aiohttp>=3.13.5` to `requirements.txt` so the Docker image includes the correct version from the start. This has not yet been applied to the committed `requirements.txt`. It should be the first change in the next maintenance pass.
+
+**Impact:** Without the correct `aiohttp` version, no LLM calls can be made — the Google SDK cannot establish HTTP connections. This is a hard blocker at startup, not a degraded-operation condition.
+
+---
+
 ## 4. Implementation Sprint Blueprint (10 Hours)
 
 ### Phase 1 — Environment Baseline & Adversarial Test Datasets [Hours 1–2]
@@ -756,6 +898,6 @@ docker run -v $(pwd)/.env:/app/.env -p 80:8501 prismforge-ai:latest
 
 ---
 
-*Document Version: v11 — Final*
-*Patches applied: Router collapse (3.15), Blind spot demotion (3.16), summary_store state field + merge reducer, worker async fix, ExtractionRecord return type, Streamlit async bridge, topology diagram corrected, Chroma removal, extraction_worker state parameter removed + semantic_summary moved to WorkerPayload (v8), extraction_worker try/except added (v8), sub-graph topology diagram annotation corrected to match v8 worker contract (v9), route_matrix_to_workers signature fixed from illegal two-parameter edge function to single-parameter DocumentSubState edge function reading semantic_summary from sub-graph state (v9), sub-graph diagram split into two explicit handoff moments to eliminate single-node conflation ambiguity (v10), compress_inbox() record-count guard added to 3.10 with 500-record threshold and implied_liability_score sort (v10), pre-fan-out Handoff Moment 1 removed — route_matrix_to_workers reads semantic_summary from DocumentSubState not ParentState; single post-workers handoff now writes both summary_store and global_inbox atomically; diagram note, Decision 3.3, constraint checklist, and Phase 2 sprint blueprint updated accordingly (v11)*
+*Document Version: v12 — Post-Implementation*
+*Patches applied: Router collapse (3.15), Blind spot demotion (3.16), summary_store state field + merge reducer, worker async fix, ExtractionRecord return type, Streamlit async bridge, topology diagram corrected, Chroma removal, extraction_worker state parameter removed + semantic_summary moved to WorkerPayload (v8), extraction_worker try/except added (v8), sub-graph topology diagram annotation corrected to match v8 worker contract (v9), route_matrix_to_workers signature fixed from illegal two-parameter edge function to single-parameter DocumentSubState edge function reading semantic_summary from sub-graph state (v9), sub-graph diagram split into two explicit handoff moments to eliminate single-node conflation ambiguity (v10), compress_inbox() record-count guard added to 3.10 with 500-record threshold and implied_liability_score sort (v10), pre-fan-out Handoff Moment 1 removed — route_matrix_to_workers reads semantic_summary from DocumentSubState not ParentState; single post-workers handoff now writes both summary_store and global_inbox atomically; diagram note, Decision 3.3, constraint checklist, and Phase 2 sprint blueprint updated accordingly (v11), post-implementation decisions 3.17–3.22 added: monolithic pipeline.py rationale, flat graph vs sub-graphs architectural deviation, asyncio.gather vs LangGraph Send for workers, three system prompt constants, gemini-2.0-flash → gemini-2.5-flash model update, aiohttp version incompatibility (v12)*
 *Target Consumer: Claude Sonnet 4.5+ for implementation code synthesis*

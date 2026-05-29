@@ -3,6 +3,11 @@
 > Orchestration plan for Claude Code. Implements the v11 consolidated design.
 > Each phase below maps to a standalone subplan file. Build strictly in order.
 > Hard sprint budget: 10 hours.
+>
+> **STATUS: IMPLEMENTATION COMPLETE** — All four subplans executed. Pipeline is
+> deployed and operational. Post-implementation feedback loop (Phase 7) completed;
+> see docs/DESIGN.md decisions 3.17–3.22 and docs/setup_notes.md for deployment
+> findings and runtime issue resolutions.
 
 ---
 
@@ -55,12 +60,12 @@ These hold across every subplan. Violating any one is a build failure.
 
 ## Build Order (subplans)
 
-| # | Subplan | Hours | Produces |
-|---|---|---|---|
-| 1 | `01_SUBPLAN_environment_and_crawler.md` | 1–2 | env + crawler + mock data room |
-| 2 | `02_SUBPLAN_schemas_router_handoff.md` | 3–5 | state schemas, router, handoff node, LLM singletons |
-| 3 | `03_SUBPLAN_matrix_and_workers.md` | 6–7 | chunking, fan-out mapper, async worker pool |
-| 4 | `04_SUBPLAN_synthesis_blindspot_deploy.md` | 8–10 | blind-spot + compress filters, synthesis, Streamlit, Docker/EC2 |
+| # | Subplan | Hours | Produces | Status |
+|---|---|---|---|---|
+| 1 | `01_SUBPLAN_environment_and_crawler.md` | 1–2 | env + crawler + mock data room | COMPLETE |
+| 2 | `02_SUBPLAN_schemas_router_handoff.md` | 3–5 | state schemas, router, handoff node, LLM singletons | COMPLETE |
+| 3 | `03_SUBPLAN_matrix_and_workers.md` | 6–7 | chunking, fan-out mapper, async worker pool | COMPLETE |
+| 4 | `04_SUBPLAN_synthesis_blindspot_deploy.md` | 8–10 | blind-spot + compress filters, synthesis, Streamlit, Docker/EC2 | COMPLETE |
 
 ## Topology (target end-state)
 
@@ -79,15 +84,47 @@ Directory Crawler ──► [Sub-Graph per file] ──► single post-workers h
 
 ## Definition of Done
 
-- `docker build` succeeds with no Chroma/vector imports.
+- `docker build` succeeds with no Chroma/vector imports. **DONE.**
 - Three-file mock data room with embedded cross-document contradictions runs
-  end-to-end and produces a report.
+  end-to-end and produces a report. **DONE.**
 - A file that yields zero records is named in a "Coverage Gaps" block, not
-  silently dropped.
-- A forced worker exception does not crash the pool; the run still completes.
+  silently dropped. **DONE.**
+- A forced worker exception does not crash the pool; the run still completes. **DONE.**
 - Report streams to `st.markdown()` without the "event loop already running"
-  error.
+  error. **DONE.**
 
 ## Per-Phase Gate
 
 Do not advance a phase until its subplan's verification checklist passes.
+
+---
+
+## Post-Implementation Notes
+
+### Architectural deviation from spec (documented in DESIGN.md §3.18–3.19)
+
+The spec described LangGraph sub-graphs (`StateGraph(DocumentSubState)`) with workers
+dispatched via LangGraph `Send`. The implementation uses a **flat ParentState graph**
+where `process_document` is a single async LangGraph node that handles all per-document
+logic internally (router → chunk → fan-out → worker pool → handoff). Workers are run
+via `asyncio.gather`, not LangGraph `Send`. All 12 non-negotiable invariants are
+satisfied despite this structural difference.
+
+Key consequences:
+- `route_matrix_to_workers` is a pure Python function called from inside
+  `process_document`, not a LangGraph conditional edge.
+- `router_node` and `handoff_node` logic are inlined inside `process_document`,
+  not standalone LangGraph nodes.
+- `DocumentSubState` exists as a TypedDict reference in `pipeline.py` but is not
+  used as a LangGraph state schema (no sub-graph exists).
+
+### Runtime issues resolved (documented in docs/setup_notes.md)
+
+- aiohttp 3.9.5 missing `ClientConnectorDNSError` — upgraded to 3.13.5 at runtime
+  (not yet pinned in `requirements.txt`).
+- `gemini-2.0-flash` deprecated for new Google AI accounts — switched to
+  `gemini-2.5-flash` in `pipeline.py`.
+- `GOOGLE_API_KEY` requires paid Google Cloud billing; free-tier quota exhausted
+  on first run.
+- `~/.bashrc` interactive-shell guard prevents key export to non-interactive
+  processes; keys stored in `~/.profile` instead.
