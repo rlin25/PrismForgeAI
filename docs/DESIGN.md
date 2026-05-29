@@ -898,6 +898,35 @@ This resolved the import error immediately. `aiohttp>=3.13.5` is backwards-compa
 
 ---
 
-*Document Version: v12 — Post-Implementation*
+---
+
+### 3.23 Streamlit Async Bridge — ThreadPoolExecutor Replaces nest_asyncio
+
+**Problem:** The spec (Invariant I2) prescribed `nest_asyncio.apply()` + `asyncio.get_event_loop().run_until_complete()` as the Streamlit async bridge. At runtime, LangGraph's concurrent Send dispatch — which creates multiple parallel async tasks via the sub-graph fan-out — produced `RuntimeError: Task got Future attached to a different loop`. The `nest_asyncio` patch handles a single nested `run_until_complete` call but does not fully isolate LangGraph's internal task scheduler from Streamlit's event loop under high concurrency.
+
+**Selected Paradigm:** Run the pipeline in a dedicated `ThreadPoolExecutor` thread with a fresh `asyncio.new_event_loop()`.
+
+```python
+def _run_pipeline(directory_path: str) -> str:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(run_graph(directory_path))
+    finally:
+        loop.close()
+
+with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+    report = ex.submit(_run_pipeline, data_room_path).result(timeout=600)
+```
+
+The dedicated thread owns a completely isolated event loop. LangGraph's task scheduler, the httpx clients inside LangChain's LLM wrappers, and all async futures are created and resolved within the same loop. No cross-loop future references are possible.
+
+**Rejected Alternative:** `nest_asyncio.apply()` + `get_event_loop().run_until_complete()` (Invariant I2 original prescription).
+
+**Rationale:** `nest_asyncio` patches the running loop to allow nested `run_until_complete` calls, which is sufficient for simple single-coroutine invocations. It does not prevent LangGraph from creating tasks that reference different loop instances when running dozens of parallel extraction workers via Send dispatch. The thread-based approach provides full loop isolation without patching. `nest_asyncio` remains in `requirements.txt` as a declared dependency; `nest_asyncio.apply()` is no longer called at module load.
+
+---
+
+*Document Version: v13 — Post-Implementation*
 *Patches applied: Router collapse (3.15), Blind spot demotion (3.16), summary_store state field + merge reducer, worker async fix, ExtractionRecord return type, Streamlit async bridge, topology diagram corrected, Chroma removal, extraction_worker state parameter removed + semantic_summary moved to WorkerPayload (v8), extraction_worker try/except added (v8), sub-graph topology diagram annotation corrected to match v8 worker contract (v9), route_matrix_to_workers signature fixed from illegal two-parameter edge function to single-parameter DocumentSubState edge function reading semantic_summary from sub-graph state (v9), sub-graph diagram split into two explicit handoff moments to eliminate single-node conflation ambiguity (v10), compress_inbox() record-count guard added to 3.10 with 500-record threshold and implied_liability_score sort (v10), pre-fan-out Handoff Moment 1 removed — route_matrix_to_workers reads semantic_summary from DocumentSubState not ParentState; single post-workers handoff now writes both summary_store and global_inbox atomically; diagram note, Decision 3.3, constraint checklist, and Phase 2 sprint blueprint updated accordingly (v11), post-implementation decisions 3.17–3.22 added: monolithic pipeline.py rationale, flat graph vs sub-graphs architectural deviation, asyncio.gather vs LangGraph Send for workers, three system prompt constants, gemini-2.0-flash → gemini-2.5-flash model update, aiohttp version incompatibility (v12)*
 *Target Consumer: Claude Sonnet 4.5+ for implementation code synthesis*

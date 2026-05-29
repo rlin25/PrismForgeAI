@@ -1,19 +1,28 @@
 """
 PrismForge AI v4 — Streamlit Frontend
-Async bridge: nest_asyncio.apply() + get_event_loop().run_until_complete()
-Never asyncio.run() inside Streamlit (Decision 3.11, Invariant I2).
+Async bridge: pipeline runs in a dedicated thread with a fresh event loop.
+This avoids "Future attached to a different loop" errors that occur when
+LangGraph's concurrent Send dispatch interacts with Streamlit's internal loop.
 """
 
 import asyncio
+import concurrent.futures
 import os
 from pathlib import Path
-
-import nest_asyncio
-nest_asyncio.apply()  # patch Streamlit's running event loop before any async calls
 
 import streamlit as st
 
 from pipeline import run_graph
+
+
+def _run_pipeline(directory_path: str) -> str:
+    """Run the async pipeline in a fresh event loop on a dedicated thread."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(run_graph(directory_path))
+    finally:
+        loop.close()
 
 st.set_page_config(
     page_title="PrismForge AI — Due Diligence Risk Report",
@@ -67,9 +76,8 @@ with col_cfg:
         else:
             with st.spinner("Analyzing documents… This may take several minutes."):
                 try:
-                    report = asyncio.get_event_loop().run_until_complete(
-                        run_graph(data_room_path)
-                    )
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                        report = ex.submit(_run_pipeline, data_room_path).result(timeout=600)
                     st.session_state["report"] = report
                     st.session_state["report_path"] = data_room_path
                     st.success("Analysis complete.")
