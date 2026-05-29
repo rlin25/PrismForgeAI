@@ -2,7 +2,7 @@
 
 **Purpose:** Generate a `walkthrough/` directory of annotated design rationale documents for every source file in the project.
 **When to use:** After all subplans are implemented and the codebase is complete.
-**Run after:** `05_feedback_loop.md` — the walkthrough is only useful once the source files and design documents are fully reconciled.
+**Run order:** Step 4 of 6 — see `prompts/BATCH.md` for the full sequence.
 
 ---
 

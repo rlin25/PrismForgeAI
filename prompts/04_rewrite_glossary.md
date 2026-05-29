@@ -2,7 +2,7 @@
 
 **Purpose:** Rewrite the design-phase glossary as a post-implementation reference organized for two audiences: recruiters reading the repo, and the developer returning to the codebase.
 **When to use:** After all subplans are implemented and the codebase is complete.
-**Run after:** `05_feedback_loop.md` — verify definitions against the actual implementation before rewriting.
+**Run order:** Step 3 of 6 — see `prompts/BATCH.md` for the full sequence.
 
 ---
 

@@ -1,6 +1,7 @@
 # Prompt: Generate Architecture Diagrams
 **Phase:** Post-implementation documentation
-**When to use:** After the feedback loop is complete and all design documents are reconciled. Run after `05_feedback_loop.md` and before or alongside `02_readme_generation.md`.
+**When to use:** After the feedback loop is complete and all design documents are reconciled.
+**Run order:** Step 5 of 6 — see `prompts/BATCH.md` for the full sequence.
 **Produces:** A Mermaid architecture diagram for the README and a Mermaid file flow diagram for the walkthrough directory.
 
 ---
@@ -155,5 +156,5 @@ Apply with `:::llm`, `:::state`, `:::entry`, `:::output`, `:::guard` inline on n
 - The architecture diagram is the first technical artifact most readers will see — prioritize clarity over completeness
 - The sub-graph sandbox is the most important structural concept to convey: parallel execution per document, private state, single handoff
 - The file flow diagram is for developers, not recruiters — prioritize accuracy over simplicity
-- If the walkthrough directory does not exist yet, run `03_generate_walkthrough.md` first
-- Run this after `05_feedback_loop.md` so the source documents reflect the actual implementation, not the plan
+- The walkthrough directory must exist before running this prompt (step 4 in `prompts/BATCH.md`)
+- Design documents must be reconciled before running this prompt (step 2 in `prompts/BATCH.md`)
