@@ -24,23 +24,23 @@ flowchart TD
         ST["2. TypedDict states\nParentState · DocumentSubState"]:::state
         SG["3. LLM singletons\nrouter_llm (Gemini Flash)\nstructured_router\nllm (Claude Sonnet)\nstructured_llm"]:::llm
         SP["4. splitter singleton\nRecursiveCharacterTextSplitter\nchunk_size=4000  overlap=800"]:::proc
-        ND["5. Nodes + helpers\ndirectory_crawler\nroute_matrix_to_workers\nextraction_worker\nprocess_document\nmaster_round_table_node\ndetect_blind_spots\ncompress_inbox"]:::proc
-        GC["6. Graph construction\nStateGraph(ParentState)\ndispatch_documents edge\ncompile()"]:::guard
+        ND["5. Nodes + helpers\ndirectory_crawler\nrouter_node · chunk_node\nroute_matrix_to_workers\nextraction_worker · handoff_node\nmaster_round_table_node\ndetect_blind_spots\ncompress_inbox"]:::proc
+        GC["6. Graph construction\nStateGraph(DocumentSubState) → doc_pipeline\nStateGraph(ParentState) + doc_pipeline node\ndispatch_subgraphs edge\ncompile()"]:::guard
         RG["7. run_graph()\nawait graph.ainvoke()\nmax_concurrency=50"]:::entry
     end
 
     subgraph AP["app.py"]
         direction TB
-        NA["nest_asyncio.apply()\nat module load"]:::guard
+        TB["ThreadPoolExecutor(max_workers=1)\n_run_pipeline() → new_event_loop()"]:::guard
         UI["Streamlit UI\ntwo-column layout\ntext_input for data room path\nspinner"]:::proc
-        RR["get_event_loop()\n.run_until_complete(\n  run_graph(path)\n)"]:::entry
+        RR["ex.submit(_run_pipeline, path)\n.result(timeout=600)"]:::entry
         MR["st.markdown(report)\nst.download_button(...)"]:::output
     end
 
     DK -->|"packages pipeline.py + app.py\ninto single container"| PL
     DK --> AP
     RG -->|"run_graph imported by app.py"| RR
-    NA --> UI
+    TB --> UI
     UI --> RR
     RR --> MR
 
@@ -72,8 +72,8 @@ _Legend: yellow = LLM singleton, purple-tinted = state schema, blue = processing
 
 ```
 [app.py]
-  nest_asyncio.apply()                  -- patches Streamlit's running event loop
-  get_event_loop().run_until_complete(run_graph(path))
+  ThreadPoolExecutor(max_workers=1)     -- dedicated thread with isolated event loop
+  _run_pipeline() → asyncio.new_event_loop().run_until_complete(run_graph(path))
           |
           v
 [pipeline.py — LangGraph graph]
@@ -83,19 +83,21 @@ _Legend: yellow = LLM singleton, purple-tinted = state schema, blue = processing
     v
   directory_crawler                     -- reads all UTF-8 files; populates crawled_files
     |
-    | dispatch_documents (conditional edge)
-    | emits one Send("process_document", {source_material, file_name}) per file
+    | dispatch_subgraphs (conditional edge)
+    | emits one Send("doc_pipeline", initial_DocumentSubState) per file
     |
     v  (up to 50 concurrent, per max_concurrency)
-  process_document  [x N files]
-    |  1. structured_router.ainvoke → RouterOutput
+  doc_pipeline  [x N files — StateGraph(DocumentSubState) sub-graph]
+    |  router_node: structured_router.ainvoke → RouterOutput
     |     (semantic_summary + dynamic_topology in one call)
-    |  2. splitter.split_text → document_chunks
-    |  3. route_matrix_to_workers → List[payload_dict]  (chunks × lenses)
-    |  4. asyncio.gather(extraction_worker per payload)
-    |  5. return {"global_inbox": [...], "summary_store": {file: summary}}
+    |  chunk_node: splitter.split_text → document_chunks
+    |  route_matrix_to_workers (conditional edge):
+    |     emits Send("extraction_worker", payload_dict) × (chunks × lenses)
+    |  extraction_worker [x M workers per sub-graph]:
+    |     structured_llm.ainvoke → ExtractionRecord → local_inbox
+    |  handoff_node: writes global_inbox + summary_store to DocumentSubState output fields
     |
-    | (ParentState reducers accumulate across all N process_document calls:
+    | (ParentState reducers accumulate as sub-graphs complete:
     |   global_inbox via operator.add
     |   summary_store via lambda a, b: {**a, **b})
     |
@@ -121,12 +123,12 @@ _Legend: yellow = LLM singleton, purple-tinted = state schema, blue = processing
 | Decision | What was chosen | Why |
 |---|---|---|
 | 3.17 | Monolithic `pipeline.py` | Sprint overhead of module decomposition exceeds benefit with no test harness |
-| 3.18 | Flat graph, `process_document` as single async node | Sub-graph state propagation for `global_inbox`/`summary_store` risks silent data loss |
-| 3.19 | `asyncio.gather` for worker pool | Zero per-call graph overhead vs LangGraph Send; same invariants satisfied |
+| 3.18 | Spec-compliant sub-graphs (`doc_pipeline`) | `DocumentSubState` output fields with matching reducers enable reliable parent propagation |
 | 3.16 | `detect_blind_spots` as Python function | A list filter is simpler and more transparent than a conditional graph node |
 | 3.10 | `compress_inbox` 500-record guard | Keeps synthesis prompt within frontier model context limits |
 | 3.4 | `max_concurrency=50` at graph invocation | Single unified throttle; no module-level Semaphore |
-| 3.11 | Streamlit + `nest_asyncio` | Stays in pure Python; eliminates JavaScript/SSE layer |
+| 3.11 | Streamlit + Python async bridge | Stays in pure Python; eliminates JavaScript/SSE layer |
+| 3.23 | `ThreadPoolExecutor` replaces `nest_asyncio` | Full event loop isolation; `nest_asyncio` insufficient under concurrent Send dispatch |
 | 3.12 | Single Docker container on EC2 | Environmental determinism; managed PaaS fails with heavy AI dependency stacks |
 
 ---
@@ -158,7 +160,7 @@ binding contract see `docs/INTERFACE_CONTRACT.md`.
 | M3 | Blind-spot detection is a Python filter, not a graph node |
 | C1 | `chunk_size=4000` is characters, not tokens |
 | I1 | `max_concurrency=50` set only at graph invocation |
-| I2 | Never `asyncio.run()` inside Streamlit — use `nest_asyncio` + `run_until_complete` |
+| I2 | Never `asyncio.run()` inside Streamlit — use `ThreadPoolExecutor` + `asyncio.new_event_loop()` |
 | W1 | `WorkerPayload` fields are JSON-primitive only |
 | W2 | `semantic_summary` is a required `WorkerPayload` field |
 
@@ -176,7 +178,3 @@ These are the areas most likely to change in v5, independent of any single file:
 - **Module decomposition:** When test coverage warrants it, `pipeline.py` should split into
   `src/schemas.py`, `src/nodes.py`, `src/graph.py`, and `src/prompts.py`. `app.py` imports
   only `run_graph` so the split would not change the `app.py`/`pipeline.py` boundary.
-- **Sub-graph migration:** If LangGraph's sub-graph state propagation API stabilizes, the
-  flat `process_document` node is the natural candidate to become a true sub-graph. All
-  invariants are already satisfied at the behavioral level; only the structural wiring needs
-  to change.

@@ -29,7 +29,7 @@ flowchart TD
         RT["Router\n(Gemini Flash)"]:::llm
         CH["Chunker + Anchoring\nRecursiveCharacterTextSplitter\nchunk_size=4000  overlap=800"]:::proc
         MX["Matrix Fan-Out\nChunks × Lenses"]:::proc
-        WP["Extraction Workers\n(Claude Sonnet)\nasyncio.gather pool"]:::llm
+        WP["Extraction Workers\n(Claude Sonnet)\nLangGraph Send pool"]:::llm
         HO["Handoff\nglobal_inbox + summary_store"]:::guard
     end
 
@@ -76,7 +76,7 @@ _Legend: yellow = LLM call (Gemini Flash / Claude Sonnet), purple-tinted = Paren
 
 **Dynamic Semantic Topology (DST).** A software license agreement and an employment contract do not have the same risk profile. Applying a fixed twelve-lens template to every document wastes LLM budget on irrelevant lenses and produces noise. DST means the router assigns 3–7 content-appropriate lenses per document at runtime. A document without a change-of-control clause is not analyzed under a `Change_of_Control` lens. The extraction set is never the same twice.
 
-**Chunks x Lenses cross-product.** After routing, the document is split into ~1,000-token chunks (4,000 characters, 800-character overlap via `RecursiveCharacterTextSplitter`). Every chunk is analyzed under every assigned lens — independently and in parallel via `asyncio.gather`. This means a finding that spans a chunk boundary is caught by two overlapping chunks, and each lens is applied at the granularity of the chunk, not the whole document. A document with five chunks and five lenses produces twenty-five structured extraction records.
+**Chunks x Lenses cross-product.** After routing, the document is split into ~1,000-token chunks (4,000 characters, 800-character overlap via `RecursiveCharacterTextSplitter`). Every chunk is analyzed under every assigned lens — independently and in parallel via LangGraph `Send`-dispatched worker nodes. This means a finding that spans a chunk boundary is caught by two overlapping chunks, and each lens is applied at the granularity of the chunk, not the whole document. A document with five chunks and five lenses produces twenty-five structured extraction records.
 
 **Single-call router.** The router produces the semantic summary and the lens array in one structured LLM call — a single `RouterOutput` response from Gemini Flash via `.with_structured_output()`. There is no separate summary call followed by a separate lens selection call. One round-trip, both outputs atomically. The semantic summary is then stamped into every worker payload so each extraction worker has full-document context even when operating on a small chunk.
 
@@ -100,7 +100,7 @@ This project began with domain learning, not code. The approach was:
 
 5. **Implementation.** With the contract and plans in place, implementation was a translation exercise. The hard decisions had already been made.
 
-6. **Feedback loop.** After implementation, every structural deviation from the original spec — the flat graph instead of sub-graphs, `asyncio.gather` instead of LangGraph Send for workers, the inlining of `router_node` and `handoff_node` — was documented explicitly in `DESIGN.md` decisions 3.17–3.22 and reconciled against the interface contract. The design documents were updated to reflect reality without erasing the original reasoning.
+6. **Feedback loop.** After initial implementation, every structural deviation from the original spec was documented explicitly in `DESIGN.md` decisions 3.17–3.22 and reconciled against the interface contract. A second pass rewrote `pipeline.py` to the spec-compliant sub-graph architecture. The design documents track both the original deviations (as decision history) and the current state.
 
 All architectural judgment belongs to the developer. Claude provided Socratic pressure — it asked the questions that forced the design to be more precise — but it did not make decisions. The invariants, the schema choices, the decision to eliminate sub-graphs, the choice of a flat monolithic `pipeline.py` over a `src/` module tree: these are all deliberate human decisions with documented rationale.
 
@@ -129,9 +129,10 @@ The code is intentionally disposable. `pipeline.py` is a monolith by design: in 
 | Schema validation | Pydantic v2 |
 | LLM integration | LangChain, langchain-anthropic, langchain-google-genai |
 | Text splitting | langchain-text-splitters |
-| Concurrency | asyncio, nest_asyncio |
+| Concurrency | asyncio, concurrent.futures.ThreadPoolExecutor |
 | Extraction LLM | Anthropic Claude Sonnet (claude-sonnet-4-20250514) |
 | Routing LLM | Google Gemini Flash (gemini-2.5-flash) |
+| HTML preprocessing | BeautifulSoup4 |
 | UI | Streamlit |
 | Deployment | Docker, AWS EC2 |
 
@@ -174,13 +175,14 @@ pip install -r requirements.txt
 pip install "aiohttp>=3.13.5"   # temporary fix — not yet pinned in requirements.txt
 export ANTHROPIC_API_KEY=your_key
 export GOOGLE_API_KEY=your_key
+python3 preprocess.py           # convert source_docs/*.htm → data_room/*.txt
 streamlit run app.py
 ```
 
 ### Demo flow
 
-1. Prepare a directory of plain-text documents (UTF-8 encoded). A minimal demo uses three files with at least one cross-document tension — for example, a software license warranty in one file and an upstream GPL dependency disclosure in another.
-2. Open the Streamlit UI. Enter the absolute path to your data room directory.
+1. Convert the raw EDGAR source filings to clean plain-text: `python3 preprocess.py`. This reads `.htm` files from `source_docs/` and writes preprocessed `.txt` files to `data_room/`.
+2. Open the Streamlit UI. Enter the absolute path to your data room directory (default: `./data_room`).
 3. Click Run. The spinner will be active while the pipeline executes: crawler → router phase → extraction matrix → synthesis.
 4. The risk report renders as Markdown in the UI. Use the download button to save it.
 5. Check the Coverage Gaps section. Any file that was read but produced no extraction records will be listed there explicitly.

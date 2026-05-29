@@ -38,7 +38,8 @@ warrants it — not during a sprint.
 - **Imported by:** `app.py` (imports only `run_graph`). Nothing else.
 - **Deliberately does not touch:** the filesystem outside the user-specified data room path;
   no vector store (Invariant S3); no database; no web requests outside LLM API calls; no
-  threading (only asyncio).
+  direct threading (`app.py` handles the ThreadPoolExecutor bridge; `pipeline.py` uses only
+  asyncio internally).
 
 ---
 
@@ -68,8 +69,8 @@ structural contracts at two specific boundaries:
 - **`WorkerPayload`** is the boundary between `route_matrix_to_workers` and
   `extraction_worker`. It carries `semantic_summary` as a required field (Invariants W2, E4)
   because `extraction_worker` has no state parameter and therefore no other path to the
-  summary. All fields are JSON-primitive (Invariant W1) because LangGraph `Send` — and by
-  extension `asyncio.gather` with these same dicts — requires serializable payloads.
+  summary. All fields are JSON-primitive (Invariant W1) because LangGraph `Send` payloads
+  require serializable dicts.
 
 ### 4.2 LLM Singletons (Invariant S1)
 
@@ -126,34 +127,38 @@ window chunker from scratch would consume sprint hours with no quality benefit (
 
 - **`directory_path`** — read-only input; set at invocation, never written again.
 - **`crawled_files`** — no reducer (Invariant P2). It is written exactly once by
-  `directory_crawler` before any document processing begins. If it had an `add` reducer, a
-  bug that wrote to it a second time would silently append duplicates rather than raising an
-  error.
+  `directory_crawler` before any sub-graph runs. If it had an `add` reducer, a bug that
+  wrote to it a second time would silently append duplicates rather than raising an error.
 - **`summary_store`** — merge reducer `lambda a, b: {**a, **b}` (Invariant P1). When N
-  `process_document` nodes run in parallel and each returns
-  `{"summary_store": {file_name: summary}}`, LangGraph calls the reducer once per return to
+  `doc_pipeline` sub-graphs complete in parallel and each propagates
+  `{"summary_store": {file_name: summary}}`, LangGraph calls the reducer once per completion to
   merge the new single-key dict into the accumulating parent dict. Without the merge reducer,
-  the default overwrite behavior would mean only the last process_document to complete would
-  have its summary survive. This is the only place where the parallel execution model touches
-  `summary_store`.
-- **`global_inbox`** — `operator.add` reducer. Same logic: N parallel returns, each
-  contributing a list of `ExtractionRecord` objects, are accumulated via list concatenation.
+  the default overwrite behavior would mean only the last sub-graph to complete would have its
+  summary survive.
+- **`global_inbox`** — `operator.add` reducer. Same logic: N parallel sub-graph completions,
+  each contributing a list of `ExtractionRecord` objects, are accumulated via list
+  concatenation.
 - **`master_risk_report`** — no reducer; written exactly once by `master_round_table_node`.
 
-#### DocumentSubState — A Documentation Artifact
+#### DocumentSubState — The Sub-Graph State Schema
 
-`DocumentSubState` is defined as a TypedDict in `pipeline.py` but is **not passed to
-`StateGraph()`**. No LangGraph sub-graph exists that uses it as its state schema. It is never
-passed to a checkpoint, never has reducers applied to it at runtime, and never crosses a
-LangGraph state boundary.
+`DocumentSubState` is passed to `StateGraph(DocumentSubState)` to build the `doc_pipeline`
+sub-graph. It is the live state schema for each per-document sub-graph execution — checkpointed,
+reduced, and propagated by LangGraph at runtime.
 
-It exists for two reasons. First, it documents the per-document field surface that was
-described in the design spec — if a future v5 refactor introduces true LangGraph sub-graphs,
-this TypedDict is ready to become the sub-graph state schema. Second, it serves as a type
-reference for the fields that `process_document` uses as local variables internally: the
+Its fields fall into two categories:
+
+**Internal fields** — used within the sub-graph and not propagated to the parent:
 `source_material`, `file_name`, `semantic_summary`, `dynamic_topology`, `document_chunks`,
-and `local_inbox` variables inside `process_document` correspond directly to `DocumentSubState`
-fields, making the correspondence to the design spec readable.
+`local_inbox`.
+
+**Output fields** — written by `handoff_node` and propagated to `ParentState` when the
+sub-graph completes:
+- `global_inbox: Annotated[List[ExtractionRecord], add]` — matches the same key and reducer in
+  `ParentState`, so LangGraph accumulates records from parallel sub-graphs via `operator.add`.
+- `summary_store: Annotated[Dict[str, str], lambda a, b: {**a, **b}]` — matches the same key
+  and merge reducer in `ParentState`, so parallel sub-graph summaries accumulate rather than
+  overwriting each other (Invariant P1).
 
 The `gap_detected` and `blind_spots` fields that appeared in an earlier version of the spec
 are intentionally absent. Blind spot detection was demoted from a LangGraph state field to a
@@ -161,41 +166,44 @@ pure Python function in Decision 3.16 (Invariant M3).
 
 ---
 
-### 4.5 The Flat Graph Architecture (Decision 3.18) — The Most Non-Obvious Decision
+### 4.5 The Sub-Graph Architecture (Decision 3.18 Revisited) — Spec-Compliant Implementation
 
 The design spec described a sub-graph per document: `StateGraph(DocumentSubState)` with
 `router_node`, a chunk node, `route_matrix_to_workers` as a conditional edge, extraction
 workers dispatched via LangGraph `Send`, and `handoff_node` — all as distinct LangGraph nodes
-within each sub-graph. The implementation does none of this.
+within each sub-graph. `pipeline.py` implements this exactly.
 
-The actual graph has three nodes:
+The parent graph has three nodes:
 
 ```
-directory_crawler → process_document (dispatched N times via Send) → master_round_table_node
+directory_crawler → doc_pipeline (dispatched N times via Send) → master_round_table_node
 ```
 
-`process_document` is a single async LangGraph node. All per-document logic — routing,
-chunking, fan-out matrix construction, the worker pool, and the handoff return — runs
-sequentially in Python inside it.
+`doc_pipeline` is a compiled `StateGraph(DocumentSubState)` sub-graph with the following
+internal topology:
 
-**Why sub-graphs were abandoned:** LangGraph sub-graph state propagation requires explicit key
-mapping between child state schema and parent state schema at sub-graph exit. For
-`global_inbox` (a list with an `add` reducer) and `summary_store` (a dict with a merge
-reducer), implementing this reliably requires understanding LangGraph's internal sub-graph
-channel scoping rules, which are non-obvious and have changed across minor versions. The risk
-is silent data loss: a mis-scoped key produces no runtime error but drops all records from the
-affected document. In a sprint context with no test harness, that silent failure mode is
-unacceptable.
+```
+START → router_node → chunk_node
+chunk_node --[route_matrix_to_workers conditional edge]--> extraction_worker
+extraction_worker → handoff_node → END
+```
 
-The flat architecture eliminates the sub-graph boundary entirely. `process_document` returns a
-plain Python dict, and LangGraph applies the ParentState reducers directly. The reducers are
-exercised on every return from every `process_document` invocation — identically to how they
-would work at a sub-graph handoff, but without the scoping complexity.
+`dispatch_subgraphs` (the parent conditional edge) emits one
+`Send("doc_pipeline", initial_DocumentSubState)` per crawled file. LangGraph runs the
+resulting sub-graph executions with up to `max_concurrency=50` in parallel.
 
-All 12 non-negotiable invariants are satisfied by the flat implementation. The structural
-difference is invisible at the invariant level. The sub-graph architecture remains the correct
-upgrade path if LangGraph's sub-graph state propagation API stabilizes with clear contracts
-for reducer scoping.
+**State propagation across the sub-graph boundary:** `DocumentSubState` declares
+`global_inbox` and `summary_store` as output fields with reducers that match `ParentState`.
+When each sub-graph completes, LangGraph detects these overlapping keys and applies the parent
+reducers — accumulating extraction records via `operator.add` and summaries via the merge
+reducer `lambda a, b: {**a, **b}`. This is the mechanism that allows parallel sub-graphs to
+contribute to a shared parent inbox without race conditions.
+
+**Why this works now:** The key requirement is that `DocumentSubState` declares
+`global_inbox` and `summary_store` as annotated output fields with matching reducers. With
+those declarations in place, LangGraph's sub-graph channel scoping propagates them to the
+parent reliably. Decision 3.18 (recorded in DESIGN.md) documents the earlier flat
+architecture and the rationale for the rewrite.
 
 ---
 
@@ -268,52 +276,37 @@ document count grows — either a context overflow error or a degraded report wi
 
 ---
 
-### 4.9 `route_matrix_to_workers` (Pure Function, Not a LangGraph Edge)
+### 4.9 `route_matrix_to_workers` (LangGraph Conditional Edge, Invariants E1–E4)
 
-The design spec defined `route_matrix_to_workers` as a LangGraph conditional edge function
-with signature `def route_matrix_to_workers(state: DocumentSubState) -> List[Send]`. The
-implementation has a different signature:
+`route_matrix_to_workers` is a LangGraph conditional edge registered in `doc_pipeline` with
+the spec-compliant signature:
 
 ```python
-def route_matrix_to_workers(
-    file_name: str,
-    document_chunks: List[str],
-    dynamic_topology: List[str],
-    semantic_summary: str,
-) -> List[Dict[str, Any]]:
+def route_matrix_to_workers(state: DocumentSubState) -> List[Send]:
 ```
 
-It returns `List[Dict[str, Any]]` (primitive dicts) rather than `List[Send]` because it is
-not registered with the LangGraph builder. It is called directly from inside `process_document`
-as a plain Python function.
+It receives the full `DocumentSubState` (Invariant E1 — single parameter only). `semantic_summary`
+is always present at the time this edge fires because `router_node` runs earlier in the same
+sub-graph execution and writes it into `DocumentSubState` (Invariant E2).
 
-**Why a pure function rather than a conditional edge:** Because there is no sub-graph, there
-is no conditional edge to register. `route_matrix_to_workers` was extracted as a standalone
-function (rather than inlined) to keep `process_document` readable and to preserve testability
-of the cross-product logic independently of the async graph machinery.
-
-**Why explicit parameters instead of a state dict:** The original `state: DocumentSubState`
-single-parameter signature was required because LangGraph conditional edge functions receive
-only one argument. Since this function is no longer a LangGraph edge, the constraint is
-lifted. Explicit parameters make the function's dependencies readable without inspecting the
-body and prevent accidental reads of fields not listed in the signature.
+The function constructs the full `chunks × dynamic_topology` cross-product and returns one
+`Send("extraction_worker", worker_config.model_dump())` per combination. LangGraph then
+dispatches each `Send` as an independent `extraction_worker` node invocation within the
+sub-graph.
 
 **Why `.model_dump()` (Invariant E3):** Each `WorkerPayload` is constructed to validate the
-fields, then immediately serialized to a primitive dict via `.model_dump()`. The dicts are
-passed to `asyncio.gather`, which does not require Pydantic serialization; but this practice
-is retained from the original LangGraph `Send` design where primitive dicts are mandatory.
-Keeping `.model_dump()` here makes the boundary explicit: after this point, the data is a
-plain Python dict. `extraction_worker` reconstructs a `WorkerPayload` from it on entry to
-re-validate (the round-trip through dict also catches any field name drift between the two
-functions).
+fields, then immediately serialized to a primitive dict via `.model_dump()` before being placed
+in the `Send`. LangGraph `Send` payloads must be JSON-primitive-serializable — passing a Pydantic
+instance directly is not guaranteed to work and may produce silent serialization errors. The
+primitive dict boundary is explicit: after `.model_dump()`, the data is a plain Python dict.
+`extraction_worker` reconstructs a `WorkerPayload` from it on entry to re-validate.
 
 **Why `semantic_summary` is stamped at dispatch time (Invariant E4):** The summary is
 resolved once per document (one router call) and stamped into every payload in the fan-out
 batch. This is the only channel by which a worker receives the summary — `extraction_worker`
-has no state parameter (Invariant X1) and cannot read from `ParentState`. Stamping at
-dispatch time also means the summary is carried in volatile memory only (assembled as a string
-inside the worker) rather than written to a LangGraph channel for each of the N workers,
-avoiding heap bloat from N×summary duplicates in the checkpoint ledger (Decision 3.2).
+has no state parameter (Invariant X1) and LangGraph does not inject sub-graph state into
+`Send`-dispatched nodes. Stamping at dispatch time means the summary is carried in the
+payload only; it does not create a separate LangGraph channel write for each of the N workers.
 
 ---
 
@@ -325,29 +318,29 @@ async def extraction_worker(payload_dict: Dict[str, Any]) -> Dict[str, Any]:
 
 This function satisfies five invariants. Each constraint exists for a specific reason:
 
-**Invariant X1 — single parameter:** `extraction_worker` takes only `payload_dict`. In the
-original LangGraph `Send` design, `Send`-dispatched nodes do not receive the parent graph
-state — LangGraph injects only the Send payload. Adding a `state: ParentState` parameter
-would resolve to an empty dict at runtime, causing `summary_store.get()` to always return
-`""`. Even in the flat `asyncio.gather` design, the function is called with only `payload_dict`
-— there is no injection mechanism for a second parameter.
+**Invariant X1 — single parameter:** `extraction_worker` takes only `payload_dict`. LangGraph
+`Send`-dispatched nodes receive only the `Send` payload — LangGraph does not inject sub-graph
+or parent state into them. Adding a `state: DocumentSubState` or `state: ParentState`
+parameter would resolve to an empty dict at runtime, causing `summary_store.get()` to always
+return `""`. The single-parameter signature is therefore both a correctness requirement and
+the only valid calling convention for this node.
 
 **Invariant X2 — summary from payload, never from state:** Follows directly from X1. The
 summary must travel inside the payload. See the dispatch-time stamping discussion in §4.9.
 
 **Invariant X3 — `await structured_llm.ainvoke`:** Calling sync `.invoke()` inside an async
-worker blocks the entire event loop for the duration of the HTTP round-trip, serializing all
-concurrent workers. `asyncio.gather` only provides concurrency if all coroutines yield control
-at I/O boundaries — `.ainvoke()` yields; `.invoke()` does not.
+LangGraph node blocks the event loop for the duration of the HTTP round-trip, preventing
+other concurrently dispatched nodes from making progress. `.ainvoke()` yields at the I/O
+boundary; `.invoke()` does not.
 
 **Invariant X4 — entire body in `try/except`:** The `try` block begins before `WorkerPayload`
 construction, not after. This is intentional: if `payload_dict` contains an unexpected field
 or a field with the wrong type, `WorkerPayload(**payload_dict)` raises a Pydantic
 `ValidationError`. If the try block started after construction, that error would propagate
-and crash the `asyncio.gather` pool. One worker failure — from any cause, including a
-malformed payload, a provider API error, or a Pydantic validation error on the LLM's response
-— must return `{"local_inbox": []}` so the remaining workers in the batch complete normally.
-The file will appear in `detect_blind_spots` output if all workers for that file fail.
+and crash the worker node. One worker failure — from any cause, including a malformed payload,
+a provider API error, or a Pydantic validation error on the LLM's response — must return
+`{"local_inbox": []}` so the remaining workers in the sub-graph complete normally. The file
+will appear in `detect_blind_spots` output if all workers for that file fail.
 
 **Invariant X5 — returns `ExtractionRecord`, not raw dict:** The `local_inbox` accumulator
 in `ParentState` has type `List[ExtractionRecord]`. Inserting raw dicts would break the
@@ -365,44 +358,44 @@ binary files, subdirectories, and files with permission errors (Decision 3.6). C
 pipeline.
 
 The node reads each file and discards the content — it returns only the list of filenames.
-File content is re-read by `dispatch_documents` later. This is a deliberate trade-off:
+File content is re-read by `dispatch_subgraphs` later. This is a deliberate trade-off:
 `crawled_files` is specified as `List[str]` (filenames only), not `Dict[str, str]`, so
 `detect_blind_spots` can match on filename strings. Re-reading the content at dispatch time
 adds one extra I/O pass per file but keeps the state schema clean.
 
 ---
 
-### 4.12 `process_document` Node — The Inlined Sub-Graph
+### 4.12 `doc_pipeline` Sub-Graph — Per-Document Processing
 
-`process_document` is the most structurally significant node. It receives `{source_material,
-file_name}` via LangGraph `Send` from `dispatch_documents` and returns `{"global_inbox": [...],
-"summary_store": {...}}` directly to `ParentState` via the reducers. Between those two
-boundaries, it is responsible for:
+`doc_pipeline` is the compiled `StateGraph(DocumentSubState)` sub-graph. It receives a
+fully initialized `DocumentSubState` via `Send("doc_pipeline", ...)` from `dispatch_subgraphs`
+and propagates `global_inbox` and `summary_store` to `ParentState` when it completes. The
+four nodes within it are responsible for:
 
-1. **Router call** — one `await structured_router.ainvoke(...)` per document (Invariant R1).
-   Returns `RouterOutput` with `semantic_summary` and `dynamic_topology` as local variables.
-   The result is never written to a LangGraph channel — it lives in the function's stack frame
-   until used.
+1. **`router_node`** — one `await structured_router.ainvoke(...)` per document (Invariant R1).
+   Writes `semantic_summary` and `dynamic_topology` into `DocumentSubState`. These fields are
+   available to all subsequent nodes in the same sub-graph execution.
 
-2. **Chunking** — `splitter.split_text(source_material)` using the module-level singleton.
+2. **`chunk_node`** — `splitter.split_text(state["source_material"])` using the module-level
+   singleton. Writes `document_chunks` into `DocumentSubState`.
 
-3. **Fan-out matrix** — `route_matrix_to_workers(...)` called as a plain function with
-   explicit arguments. Returns `List[Dict[str, Any]]`.
+3. **`extraction_worker`** (×N, dispatched via `Send` from `route_matrix_to_workers`) — one
+   `await structured_llm.ainvoke(...)` per chunk × lens combination. Each worker writes a
+   single `ExtractionRecord` to `DocumentSubState["local_inbox"]` via the `operator.add`
+   reducer. Invariant X4 ensures exceptions are caught inside each worker, returning
+   `{"local_inbox": []}` on failure so one failed worker cannot block others.
 
-4. **Worker pool** — `asyncio.gather(*[extraction_worker(p) for p in payloads],
-   return_exceptions=True)`. `return_exceptions=True` means if a coroutine raises an
-   unhandled exception (one not caught inside `extraction_worker`'s own `try/except`), it
-   appears as an exception object in the results list and is filtered out during collection
-   rather than canceling the entire gather. In practice, Invariant X4 ensures exceptions are
-   caught inside the worker, but `return_exceptions=True` is an additional safety layer.
-
-5. **Handoff return** — the single atomic return dict (Invariants H1, H2). There is no
-   pre-fan-out handoff. The summary and local inbox are written to parent state in the same
-   return, after all workers have completed. A pre-fan-out handoff would have been needed if
-   `summary_store` had to be populated before workers ran — but workers receive the summary
-   from their payload, not from `ParentState["summary_store"]`. The Round-Table node, which
-   reads `summary_store`, runs only after all `process_document` nodes complete. So writing
-   `summary_store` post-workers is always in time.
+4. **`handoff_node`** — the single atomic handoff per sub-graph (Invariants H1, H2). Fires
+   after all `extraction_worker` nodes complete. Writes:
+   ```python
+   {
+       "global_inbox": sub_state["local_inbox"],
+       "summary_store": {sub_state["file_name"]: sub_state["semantic_summary"]},
+   }
+   ```
+   There is no pre-fan-out handoff. Workers receive the summary from their `WorkerPayload`,
+   not from `ParentState["summary_store"]`. The Round-Table node reads `summary_store` only
+   after all sub-graphs complete, so writing it post-workers is always in time.
 
 ---
 
@@ -440,29 +433,48 @@ single-shot paradigm to handle larger document sets without adding complexity (D
 
 ---
 
-### 4.14 `dispatch_documents` (Conditional Edge)
+### 4.14 `dispatch_subgraphs` (Conditional Edge)
 
-This function emits one `Send("process_document", {source_material, file_name})` per filename
-in `crawled_files`. It re-reads file content here because `crawled_files` is `List[str]`
-(filenames only) per the contract spec — the file text was not stored in state by
-`directory_crawler`. This is the only edge function registered with the LangGraph builder.
+This function emits one `Send("doc_pipeline", initial_DocumentSubState)` per filename in
+`crawled_files`. The `initial_DocumentSubState` is a fully initialized dict with empty
+accumulator fields (`local_inbox: []`, `global_inbox: []`, `summary_store: {}`). It
+re-reads file content here because `crawled_files` is `List[str]` (filenames only) per the
+contract spec — the file text was not stored in state by `directory_crawler`. This is the
+only conditional edge registered with the parent LangGraph builder. (Previously named
+`dispatch_documents` in earlier implementation versions.)
 
 ---
 
 ### 4.15 Graph Construction
 
-The graph has three nodes and the edges that connect them:
+There are two graph compilation steps. First, the sub-graph:
+
+```python
+_sub_builder = StateGraph(DocumentSubState)
+_sub_builder.add_node("router_node", router_node)
+_sub_builder.add_node("chunk_node", chunk_node)
+_sub_builder.add_node("extraction_worker", extraction_worker)
+_sub_builder.add_node("handoff_node", handoff_node)
+_sub_builder.add_edge(START, "router_node")
+_sub_builder.add_edge("router_node", "chunk_node")
+_sub_builder.add_conditional_edges("chunk_node", route_matrix_to_workers, ["extraction_worker"])
+_sub_builder.add_edge("extraction_worker", "handoff_node")
+_sub_builder.add_edge("handoff_node", END)
+doc_pipeline = _sub_builder.compile()
+```
+
+Then the parent graph, with `doc_pipeline` registered as a node:
 
 ```
 START → directory_crawler
-directory_crawler --[dispatch_documents conditional edge]--> process_document
-process_document → master_round_table_node
+directory_crawler --[dispatch_subgraphs conditional edge]--> doc_pipeline
+doc_pipeline → master_round_table_node
 master_round_table_node → END
 ```
 
-`dispatch_documents` returns a list of `Send` objects. LangGraph interprets a list return from
-a conditional edge as a fan-out: it dispatches one `process_document` node execution per
-`Send`, all running concurrently (up to `max_concurrency`). When all `process_document`
+`dispatch_subgraphs` returns a list of `Send` objects. LangGraph interprets a list return from
+a conditional edge as a fan-out: it dispatches one `doc_pipeline` sub-graph execution per
+`Send`, all running concurrently (up to `max_concurrency`). When all `doc_pipeline`
 executions complete, LangGraph advances to `master_round_table_node`.
 
 ---
@@ -479,10 +491,10 @@ defaults for the accumulator fields (`summary_store: {}`, `global_inbox: []`,
 returns `master_risk_report`.
 
 `run_graph` is an async function, not a synchronous wrapper around `asyncio.run()`. The
-caller (`app.py`) is responsible for the event loop bridge. `asyncio.run()` cannot be called
-inside Streamlit because Streamlit manages its own running event loop — doing so raises
-`RuntimeError: This event loop is already running`. The solution is in `app.py`, not here
-(Invariant I2, Decision 3.11).
+caller (`app.py`) is responsible for the event loop bridge via `ThreadPoolExecutor` and
+`asyncio.new_event_loop()`. `asyncio.run()` cannot be called inside Streamlit's callback,
+and `nest_asyncio` is insufficient under LangGraph's concurrent Send dispatch. The solution
+is in `app.py`, not here (Invariant I2, Decision 3.23).
 
 ---
 
@@ -499,6 +511,8 @@ inside Streamlit because Streamlit manages its own running event loop — doing 
 - Does not implement streaming to the UI. The synthesis response is collected in full inside
   `master_round_table_node` before being returned to `app.py`.
 - Does not contain any test code. No test files exist in the repository.
+- Does not preprocess raw HTML. `preprocess.py` handles EDGAR `.htm` → `.txt` conversion
+  before `pipeline.py` is invoked.
 
 ---
 
@@ -508,10 +522,6 @@ inside Streamlit because Streamlit manages its own running event loop — doing 
   full response. v5 would switch to `llm.astream` and yield tokens back through `run_graph`
   to `app.py` for incremental Streamlit rendering. This requires changing `run_graph`'s return
   type from `str` to an async generator and changing how `app.py` consumes it.
-- **True LangGraph sub-graphs:** If LangGraph's sub-graph state propagation API provides
-  clear contracts for reducer scoping, `process_document` is the natural candidate for
-  refactoring into a `StateGraph(DocumentSubState)` sub-graph. `DocumentSubState` is already
-  defined and ready.
 - **Module decomposition:** When test coverage warrants it: `src/schemas.py` for Pydantic
   models, `src/nodes.py` for node functions, `src/graph.py` for graph construction and
   `run_graph`, `src/prompts.py` for the three system prompt constants. `app.py` imports only

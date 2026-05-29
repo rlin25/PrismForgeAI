@@ -73,10 +73,15 @@ docker run \
 ```bash
 cd /path/to/PrismForgeAI
 pip install -r requirements.txt
+python3 preprocess.py          # convert source_docs/*.htm → data_room/*.txt
 streamlit run app.py
 ```
 
 The app will be available at `http://localhost:8501`.
+
+`beautifulsoup4` is listed in `requirements.txt` and will be installed by the
+`pip install` step above. `preprocess.py` also includes a fallback self-installer
+for environments where it is missing.
 
 ---
 
@@ -111,6 +116,17 @@ Dockerfile CMD). Port 80 on the EC2 host maps to 8501 in the container.
 The pipeline expects a directory of plain-text files (UTF-8 encoded). The default
 path is `./data_room` relative to the project root, but any absolute or relative
 path can be entered in the Streamlit UI.
+
+The `data_room/` directory is populated by running `preprocess.py`, which reads raw
+EDGAR `.htm` filings from `source_docs/` and writes clean `.txt` extracts:
+- `dot_hill_10k_2006.txt` — extracted from the Dot Hill Systems FY2006 10-K
+  (Item 1 Business + Item 1A Risk Factors)
+- `hp_product_purchase_agreement.txt` — extracted from the HP Product Purchase
+  Agreement EX-10.1 (Sections 14–20 and Exhibit L: IP warranty, indemnification,
+  liability cap)
+
+Run `python3 preprocess.py` before starting the app whenever the `source_docs/`
+files change or when setting up a fresh environment.
 
 - Binary files (`.DS_Store`, PDFs, images) are skipped silently by the directory
   crawler — they produce no error and do not crash the run.
@@ -208,19 +224,47 @@ RuntimeError: This event loop is already running
 from within a Streamlit callback creates a nested event loop, which Python's
 default asyncio policy does not allow.
 
-**Fix (implemented in `app.py`):** `nest_asyncio.apply()` is called at module
-load (before Streamlit executes any callbacks), and the pipeline is invoked with
-`asyncio.get_event_loop().run_until_complete(...)` instead of `asyncio.run()`:
+**Fix (implemented in `app.py`):** The pipeline runs in a dedicated
+`ThreadPoolExecutor` thread that creates a fresh `asyncio.new_event_loop()`:
 
 ```python
-import nest_asyncio
-nest_asyncio.apply()  # must be called before any Streamlit callback executes
+def _run_pipeline(directory_path: str) -> str:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(run_graph(directory_path))
+    finally:
+        loop.close()
 
-# In the button handler:
-report = asyncio.get_event_loop().run_until_complete(run_graph(data_room_path))
+with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+    report = ex.submit(_run_pipeline, data_room_path).result(timeout=600)
 ```
 
-**Status:** Resolved. `nest_asyncio` is in `requirements.txt`.
+**Status:** Resolved via Decision 3.23. `nest_asyncio` remains in `requirements.txt`
+but `nest_asyncio.apply()` is no longer called.
+
+---
+
+### 6.5 `nest_asyncio` insufficient for LangGraph concurrent Send dispatch
+
+**Symptom:**
+
+```
+RuntimeError: Task got Future <Future pending> attached to a different loop
+```
+
+**Cause:** `nest_asyncio.apply()` (the original Invariant I2 prescription) patches
+the running loop to allow nested `run_until_complete` calls, which is sufficient
+for simple single-coroutine invocations. It does not prevent LangGraph from creating
+tasks that reference different loop instances when running dozens of parallel
+extraction workers via Send dispatch inside the spec-compliant sub-graph architecture.
+
+**Fix:** The `ThreadPoolExecutor` bridge (§6.4, Decision 3.23). The dedicated thread
+owns a completely isolated event loop; LangGraph's task scheduler, the httpx clients
+inside LangChain's LLM wrappers, and all async futures are created and resolved within
+the same loop. No cross-loop future references are possible.
+
+**Status:** Resolved. `nest_asyncio.apply()` removed from `app.py`.
 
 ---
 
@@ -237,13 +281,19 @@ report = asyncio.get_event_loop().run_until_complete(run_graph(data_room_path))
 
 ```
 PrismForgeAI/
-├── pipeline.py          # Monolithic pipeline: schemas, LLM singletons, all nodes, graph
-├── app.py               # Streamlit frontend with nest_asyncio bridge
+├── pipeline.py          # Sub-graph pipeline: schemas, LLM singletons, all nodes, graph
+├── app.py               # Streamlit frontend with ThreadPoolExecutor async bridge
+├── preprocess.py        # EDGAR .htm → clean .txt converter (run before app.py)
 ├── Dockerfile           # FROM python:3.11-slim; EXPOSE 8501
 ├── requirements.txt     # Core dependencies (aiohttp pin needed — see §6.1)
-├── data_room/           # Default document directory (create before first run)
+├── source_docs/         # Raw EDGAR .htm source filings (input to preprocess.py)
+│   ├── dot_hill_systems_10-k.html
+│   └── dot_hill_systems_ex_10.1.html
+├── data_room/           # Preprocessed .txt files (output of preprocess.py; pipeline input)
+│   ├── dot_hill_10k_2006.txt
+│   └── hp_product_purchase_agreement.txt
 ├── docs/
-│   ├── DESIGN.md        # Consolidated decision ledger (v11 + post-implementation decisions)
+│   ├── DESIGN.md        # Consolidated decision ledger (v13 + post-implementation decisions)
 │   ├── INTERFACE_CONTRACT.md  # Binding signature/schema/invariant contract
 │   ├── GLOSSARY.md      # Term definitions
 │   └── setup_notes.md   # This file
@@ -268,17 +318,20 @@ source ~/.profile
 # 4. Fix aiohttp version (until requirements.txt is updated)
 pip install "aiohttp>=3.13.5"
 
-# 5. Build Docker image
+# 5. Preprocess EDGAR source files → data_room/ (local, before Docker build)
+python3 preprocess.py
+
+# 6. Build Docker image
 docker build -t prismforge-ai:latest .
 
-# 6. Run container
+# 7. Run container
 docker run \
   -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
   -e GOOGLE_API_KEY=$GOOGLE_API_KEY \
   -p 80:8501 \
   prismforge-ai:latest
 
-# 7. Access at http://<EC2-public-IP>
+# 8. Access at http://<EC2-public-IP>
 ```
 
 ---

@@ -24,8 +24,8 @@ browser. It handles:
 
 ## 2. Relationships
 
-- **Imports from:** `pipeline` (only `run_graph`); standard library (`asyncio`, `os`,
-  `pathlib`); `nest_asyncio`; `streamlit`.
+- **Imports from:** `pipeline` (only `run_graph`); standard library (`asyncio`,
+  `concurrent.futures`, `os`, `pathlib`); `streamlit`.
 - **Imported by:** nothing. It is the Streamlit entry point — invoked by
   `streamlit run app.py`.
 - **Deliberately does not touch:** LangGraph, Pydantic, LLM clients, file I/O beyond path
@@ -33,35 +33,46 @@ browser. It handles:
 
 ---
 
-## 3. The `nest_asyncio` Bridge (Invariant I2, Decision 3.11)
+## 3. The ThreadPoolExecutor Async Bridge (Invariant I2, Decision 3.23)
 
 ```python
-import nest_asyncio
-nest_asyncio.apply()
+def _run_pipeline(directory_path: str) -> str:
+    """Run the async pipeline in a fresh event loop on a dedicated thread."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(run_graph(directory_path))
+    finally:
+        loop.close()
+
+# In the button handler:
+with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+    report = ex.submit(_run_pipeline, data_room_path).result(timeout=600)
 ```
 
-These two lines appear at module load, before the Streamlit import. The ordering matters.
-Streamlit creates an internal event loop when it initializes. `nest_asyncio.apply()` patches
-the already-running loop to allow nested coroutine scheduling.
+The dedicated thread owns a completely isolated event loop. LangGraph's task scheduler,
+the httpx clients inside LangChain's LLM wrappers, and all async futures are created and
+resolved within the same loop — no cross-loop future references are possible.
 
-If `asyncio.run(run_graph(...))` were called instead, it would raise:
+**Why not `nest_asyncio` (the original prescription)?**
+
+The original spec (Decision 3.11) prescribed `nest_asyncio.apply()` at module load
+followed by `asyncio.get_event_loop().run_until_complete(run_graph(...))`. This was
+the correct approach when the pipeline used a flat `process_document` node with
+`asyncio.gather` for workers. After the rewrite to spec-compliant LangGraph sub-graphs
+with `Send`-dispatched workers, this produced:
 
 ```
-RuntimeError: This event loop is already running
+RuntimeError: Task got Future <Future pending> attached to a different loop
 ```
 
-The correct call is therefore:
+`nest_asyncio` patches the running loop to allow nested `run_until_complete` calls,
+but it does not prevent LangGraph from creating tasks that reference different loop
+instances when running dozens of parallel extraction workers via Send dispatch. The
+`ThreadPoolExecutor` bridge provides full loop isolation without patching (Decision 3.23).
 
-```python
-asyncio.get_event_loop().run_until_complete(run_graph(data_room_path))
-```
-
-`nest_asyncio.apply()` must happen before any async call — which means before any Streamlit
-widget code runs. Module-level execution guarantees this ordering.
-
-This is not a workaround for a bug; it is the documented pattern for calling async code from
-within an already-running event loop (Decision 3.11). `nest_asyncio` is listed in
-`requirements.txt` for this reason.
+`nest_asyncio` remains in `requirements.txt` as a declared dependency but
+`nest_asyncio.apply()` is no longer called at module load.
 
 ---
 
@@ -70,8 +81,9 @@ within an already-running event loop (Decision 3.11). `nest_asyncio` is listed i
 Streamlit was chosen over a FastAPI + JavaScript + SSE stack because it eliminates the
 frontend layer entirely. All code remains in Python. The alternative would introduce
 JavaScript context switching, CORS configuration, SSE chunk-encoding debugging, and CSS layout
-overhead at the worst possible time in a sprint. The `nest_asyncio` bridge is two lines of
-code. The SSE approach is a non-trivial debugging surface.
+overhead at the worst possible time in a sprint. The async bridge (whether `nest_asyncio`
+or `ThreadPoolExecutor`) is a small amount of boilerplate. The SSE approach is a non-trivial
+debugging surface.
 
 ---
 
