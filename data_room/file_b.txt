@@ -1,0 +1,149 @@
+TECHNICAL DUE DILIGENCE MEMORANDUM
+THIRD-PARTY SOFTWARE COMPONENT INVENTORY AND LICENSE COMPLIANCE AUDIT
+
+Subject: DataSync Pro v3.2 — Open-Source and Third-Party Dependency Analysis
+Prepared By: Lighthouse Software Audit Group LLC
+Client: Apex Capital Partners LLC (Acquirer)
+Audit Scope: Full binary and source-level dependency scan, license identification, and copyleft risk assessment
+Audit Date: March 4, 2024
+Audit Report Reference: LSAG-DD-2024-1192
+
+EXECUTIVE SUMMARY
+
+Lighthouse Software Audit Group LLC ("LSAG") was engaged by Apex Capital Partners LLC to conduct an independent technical due diligence audit of DataSync Pro v3.2 ("the Software") developed and licensed by Meridian Technologies Inc. This audit utilized automated binary analysis (BlackDuck v2023.10), static source scanning (FOSSA v3.8), and manual code review of the Software's networking and data processing subsystems.
+
+CRITICAL FINDING — MATERIAL IP DISCLOSURE RISK: This audit has identified a material discrepancy between representations made by Meridian Technologies Inc. regarding the Software's intellectual property composition and the actual third-party component landscape identified through independent technical analysis. Specifically, the Software's core networking subsystem incorporates a GPL v3-licensed component as a foundational dependency.
+
+--- SECTION 1: COMPLETE DEPENDENCY INVENTORY ---
+
+1.1 Confirmed Third-Party Components
+
+The following table presents the complete inventory of third-party software components identified in DataSync Pro v3.2 through binary fingerprinting, import graph analysis, and source code review:
+
+COMPONENT: ReactiveStream v2.1
+LICENSE: GNU General Public License v3.0 (GPL v3)
+INTEGRATION TYPE: Static linking in core networking module (libdatasync_net.so)
+USAGE: Event-driven asynchronous I/O framework; handles all real-time data synchronization operations
+COPYLEFT RISK: CRITICAL — GPL v3 Section 5(c) imposes derivative works licensing obligations
+NOTES: ReactiveStream v2.1 forms the foundational event loop architecture of DataSync Pro's networking subsystem. The integration is deep and structural — removal would require a complete rewrite of the real-time synchronization engine.
+
+COMPONENT: Anthropic SDK v0.18.0
+LICENSE: MIT License
+INTEGRATION TYPE: Dynamic linking, AI-assisted data classification module
+USAGE: Optional AI-powered document classification feature
+COPYLEFT RISK: NONE — MIT is fully permissive
+NOTES: MIT License imposes no copyleft obligations.
+
+COMPONENT: hashlib-extended v3.2.1
+LICENSE: BSD 2-Clause License
+INTEGRATION TYPE: Dynamic linking, cryptographic operations
+USAGE: Extended hash function support (SHA-3, BLAKE2b)
+COPYLEFT RISK: NONE — BSD 2-Clause is permissive
+NOTES: BSD 2-Clause License imposes no restrictions on commercial licensing.
+
+COMPONENT: OpenSSL 3.0.11
+LICENSE: Apache License 2.0
+INTEGRATION TYPE: Dynamic linking
+USAGE: TLS/SSL encryption for network communications
+COPYLEFT RISK: NONE — Apache 2.0 is permissive
+NOTES: Consistent with Licensor's representations.
+
+COMPONENT: RapidJSON v1.1.0
+LICENSE: MIT License
+INTEGRATION TYPE: Header-only, compile-time inclusion
+USAGE: JSON parsing and serialization
+COPYLEFT RISK: NONE
+NOTES: Consistent with Licensor's representations.
+
+COMPONENT: spdlog v1.11.0
+LICENSE: MIT License
+INTEGRATION TYPE: Header-only
+USAGE: Structured logging
+COPYLEFT RISK: NONE
+NOTES: Consistent with Licensor's representations.
+
+--- SECTION 2: CRITICAL GPL v3 FINDING — REACTIVESTREAM v2.1 ---
+
+2.1 Nature of GPL v3 Copyleft Obligation
+
+The identification of ReactiveStream v2.1 (GPL v3) as a statically linked dependency within DataSync Pro v3.2's core networking module constitutes a material open-source license compliance issue with significant legal and commercial consequences.
+
+The GNU General Public License v3.0, Section 5 states: "You may convey verbatim copies of the Program's source code as you receive it... You may convey a work based on the Program, or the modifications to produce it from the Program, in the form of source code under the terms of section 4, provided that you also meet all of these conditions... c) For an interactive interface displays 'Appropriate Legal Notices'; however, if the Program has interactive interfaces that do not display Appropriate Legal Notices, your work need not make them do so."
+
+More critically, GPL v3 Section 5(b) requires: "You must license the entire work, as a whole, under this GPL when anyone who receives a copy also receives the license terms." Static linking of a GPL v3 component into a proprietary application creates a derivative work subject to GPL v3's copyleft provisions.
+
+2.2 Specific Integration Analysis
+
+Our analysis of DataSync Pro v3.2's compilation artifacts confirms:
+
+(a) ReactiveStream v2.1 is statically linked into libdatasync_net.so, the core networking shared library.
+
+(b) libdatasync_net.so is a mandatory runtime dependency of DataSync Pro v3.2; the Software cannot function without it.
+
+(c) ReactiveStream's event loop, callback registry, and I/O multiplexing primitives are invoked throughout DataSync Pro's real-time synchronization pipeline.
+
+(d) The integration constitutes "conveying a work based on the Program" under GPL v3 Section 5, triggering reciprocal licensing obligations.
+
+2.3 License Compliance Implications
+
+Distribution of DataSync Pro v3.2 under a commercial proprietary license, without (a) removing the ReactiveStream dependency, (b) obtaining a commercial license exception from ReactiveStream's maintainers, or (c) releasing DataSync Pro v3.2 in its entirety under GPL v3, constitutes a violation of the GPL v3 license terms.
+
+GPL v3 Section 10 ("Automatic Licensing of Downstream Recipients") provides that any party who has received a copy of the Program receives automatic license rights. This cannot be contractually waived by the Licensor through a commercial license agreement with a downstream party.
+
+2.4 Contradiction with Licensor Representations
+
+Meridian Technologies Inc.'s Proprietary Software License and IP Warranty Agreement (PSL-2024-0847), Article 1, Section 1.2 contains the following express warranty:
+
+"Licensor specifically and unequivocally warrants that the Software contains NO components licensed under the GNU General Public License (GPL) in any version..."
+
+This warranty is materially false based on LSAG's independent audit findings. The presence of ReactiveStream v2.1 (GPL v3) as a statically linked dependency in DataSync Pro v3.2's core networking module directly contradicts this warranty.
+
+--- SECTION 3: RISK ASSESSMENT MATRIX ---
+
+3.1 GPL Compliance Risk: CRITICAL (Score: 9/10)
+The GPL v3 violation creates exposure to: copyright infringement claims by ReactiveStream maintainers and/or the Free Software Foundation; injunctions requiring cessation of distribution; damages calculated on commercial license fees or actual damages; and mandatory source code disclosure under GPL v3 Section 5.
+
+3.2 IP Warranty Breach Risk: CRITICAL (Score: 9/10)
+Licensor's express warranty that the Software contains "NO components licensed under the GNU General Public License (GPL) in any version" is directly contradicted by audit findings. This constitutes a material breach of the IP Warranty under PSL-2024-0847 Article 1.
+
+3.3 Commercial Licensing Viability Risk: HIGH (Score: 8/10)
+The GPL v3 encumbrance renders Meridian Technologies Inc.'s commercial licensing model legally untenable without remediation. Any downstream licensee receiving DataSync Pro v3.2 acquires GPL v3 rights to the entire combined work by operation of law.
+
+--- SECTION 4: RECOMMENDATIONS ---
+
+4.1 Immediate Actions Required Prior to Transaction Closing
+
+LSAG recommends that Apex Capital Partners LLC require the following as conditions precedent to closing any transaction involving DataSync Pro v3.2:
+
+(a) Complete technical remediation: Meridian Technologies Inc. must either (i) replace ReactiveStream v2.1 with a permissively licensed alternative (e.g., libuv, Boost.Asio), (ii) obtain a commercial license exception from ReactiveStream's maintainers, or (iii) release DataSync Pro v3.2 under GPL v3.
+
+(b) Updated IP warranty: Post-remediation, Meridian Technologies Inc. must provide updated representations and warranties reflecting the actual IP composition of the remediated Software.
+
+(c) Independent re-audit: Following remediation, LSAG or an equivalent qualified auditor should conduct a follow-up scan to confirm resolution.
+
+4.2 Transaction Risk Consideration
+
+In the absence of remediation prior to closing, any acquisition price should reflect: (i) remediation costs (estimated $800,000–$1,200,000 for networking subsystem rewrite); (ii) potential GPL compliance liability; and (iii) the revenue impact of potential injunctive relief during remediation.
+
+--- SECTION 5: AUDIT METHODOLOGY ---
+
+5.1 Tools and Techniques
+
+Binary dependency fingerprinting: BlackDuck v2023.10 against SPDX SBOM database
+License metadata extraction: FOSSA Enterprise v3.8
+Static import analysis: Custom LSAG toolchain for ELF binary dependency mapping
+Manual review: Senior engineers reviewed 4,200 lines of networking module source code
+Interview: Two sessions with Meridian Technologies Inc. engineering team
+
+5.2 Limitations
+
+This audit is based on DataSync Pro v3.2 build artifacts delivered by Meridian Technologies Inc. on February 20, 2024. LSAG cannot guarantee that all components of the Software were made available for review. However, the ReactiveStream dependency was independently confirmed through both automated scanning and manual source-level analysis.
+
+--- CERTIFICATION ---
+
+Lighthouse Software Audit Group LLC certifies that this report represents an independent and objective assessment based on the audit procedures described herein. This report is delivered solely for the use of Apex Capital Partners LLC in connection with its due diligence investigation and may not be relied upon by any other party.
+
+Signed:
+Dr. Elena Marchetti, Partner — Open Source License Compliance Practice
+Lighthouse Software Audit Group LLC
+March 4, 2024

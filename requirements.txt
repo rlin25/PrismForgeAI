@@ -1,0 +1,8 @@
+langgraph>=0.2
+pydantic>=2
+langchain
+langchain-text-splitters
+langchain-google-genai
+langchain-anthropic
+nest_asyncio
+streamlit

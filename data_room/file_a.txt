@@ -1,0 +1,85 @@
+PROPRIETARY SOFTWARE LICENSE AND INTELLECTUAL PROPERTY WARRANTY AGREEMENT
+
+Agreement Reference: PSL-2024-0847
+Effective Date: January 15, 2024
+Licensor: Meridian Technologies Inc. ("Licensor")
+Licensee: Apex Capital Partners LLC ("Licensee")
+
+--- ARTICLE 1: INTELLECTUAL PROPERTY OWNERSHIP AND WARRANTY ---
+
+1.1 Full Proprietary Ownership Warranty
+
+Licensor hereby warrants and represents, with full legal effect, that it is the sole and exclusive owner of all right, title, and interest in and to "DataSync Pro v3.2" (the "Software"), including but not limited to all source code, object code, algorithms, data structures, user interfaces, documentation, and all derivative works thereof. Licensor further warrants that the Software was developed entirely by Licensor's employees working within the scope of their employment using Licensor's proprietary resources, methods, and infrastructure.
+
+1.2 Absence of Third-Party Encumbrances
+
+Licensor expressly warrants that the Software does not incorporate, embed, link against, or otherwise depend upon any software component, library, module, or framework that is subject to any open-source license, copyleft license, reciprocal license, or any license that would require Licensor to: (a) disclose or make available the Software's source code to any third party; (b) grant any third party a license to use, modify, or distribute the Software; (c) impose any licensing obligations on the Licensee's use of the Software; or (d) restrict Licensor's right to license the Software on commercial proprietary terms.
+
+Licensor specifically and unequivocally warrants that the Software contains NO components licensed under the GNU General Public License (GPL) in any version, the GNU Affero General Public License (AGPL), the GNU Lesser General Public License (LGPL) where such use would impose copyleft obligations on the Software as a whole, the Mozilla Public License 2.0 (copyleft portions), the Eclipse Public License, or any other license that contains reciprocal, copyleft, or share-alike provisions.
+
+1.3 Clear Title and Non-Infringement
+
+Licensor represents and warrants that: (i) it has full legal authority to enter into this Agreement and grant the licenses herein; (ii) the Software does not infringe, misappropriate, or violate any patent, copyright, trademark, trade secret, or other intellectual property right of any third party; (iii) there are no pending or, to Licensor's knowledge, threatened claims, actions, suits, or proceedings alleging infringement of any third-party intellectual property rights with respect to the Software; and (iv) no third party has any claim, lien, encumbrance, or right in or to the Software that would interfere with or limit the rights granted to Licensee hereunder.
+
+1.4 Technology Stack Certification
+
+Licensor certifies that DataSync Pro v3.2 is built exclusively upon the following proprietary and permissively licensed components, none of which impose copyleft obligations:
+
+- Core networking engine: Proprietary Meridian StreamCore v5.1 (100% Meridian IP)
+- Data serialization layer: Proprietary Meridian DataBridge v2.3 (100% Meridian IP)
+- Authentication module: Proprietary Meridian AuthGuard v4.0 (100% Meridian IP)
+- Cryptographic primitives: OpenSSL 3.0 (Apache License 2.0 — permissive, no copyleft)
+- JSON processing: RapidJSON v1.1 (MIT License — permissive, no copyleft)
+- Logging framework: spdlog v1.11 (MIT License — permissive, no copyleft)
+
+No GPL, LGPL, AGPL, or other copyleft-encumbered components are present in any layer of the Software's architecture, including the networking subsystem, data processing pipeline, and real-time synchronization engine.
+
+--- ARTICLE 2: LICENSE GRANT ---
+
+2.1 Grant of License
+
+Subject to the terms and conditions of this Agreement, Licensor hereby grants to Licensee a non-exclusive, non-transferable, worldwide, perpetual license to: (a) install and use DataSync Pro v3.2 solely for Licensee's internal business operations; (b) make a reasonable number of copies of the Software for backup and archival purposes; and (c) permit Licensee's employees and authorized contractors to use the Software in accordance with this Agreement.
+
+2.2 Restrictions
+
+Licensee shall not: (i) sublicense, sell, resell, transfer, assign, or otherwise commercially exploit the Software; (ii) modify, translate, adapt, or create derivative works of the Software; (iii) reverse engineer, disassemble, decompile, or otherwise attempt to derive the source code of the Software; (iv) remove or alter any proprietary notices, labels, or marks on the Software.
+
+--- ARTICLE 3: REPRESENTATIONS AND WARRANTIES ---
+
+3.1 Licensor's Representations
+
+In addition to the IP warranties set forth in Article 1, Licensor represents and warrants that: (a) Licensor is a corporation duly organized, validly existing, and in good standing under the laws of Delaware; (b) Licensor has all necessary corporate power and authority to execute, deliver, and perform this Agreement; (c) this Agreement constitutes the legal, valid, and binding obligation of Licensor.
+
+3.2 Technology Readiness
+
+Licensor warrants that DataSync Pro v3.2 has completed Licensor's internal quality assurance processes and that, to Licensor's knowledge as of the Effective Date, the Software performs materially in accordance with the Documentation.
+
+--- ARTICLE 4: TERM AND TERMINATION ---
+
+4.1 Term
+
+This Agreement shall commence on the Effective Date and shall continue in perpetuity unless earlier terminated in accordance with this Article 4.
+
+4.2 Termination for Material Breach
+
+Either party may terminate this Agreement upon written notice if the other party materially breaches any provision of this Agreement and fails to cure such breach within thirty (30) days after receiving written notice thereof.
+
+--- ARTICLE 5: GOVERNING LAW ---
+
+5.1 This Agreement shall be governed by and construed in accordance with the laws of the State of Delaware, without regard to conflict of law principles.
+
+--- SIGNATURES ---
+
+Executed by the duly authorized representatives of the parties as of the date first written above.
+
+MERIDIAN TECHNOLOGIES INC.
+By: _________________________
+Name: Jonathan Harker
+Title: Chief Executive Officer
+Date: January 15, 2024
+
+APEX CAPITAL PARTNERS LLC
+By: _________________________
+Name: Sarah Vance
+Title: Managing Director, Technology Investments
+Date: January 15, 2024
