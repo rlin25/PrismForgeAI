@@ -181,51 +181,64 @@ def extract_hp_agreement(text: str) -> str:
 
 
 def extract_dot_hill_10k(text: str) -> str:
-    """Extract business description, IP section, and risk factors."""
+    """Extract Item 1 (Business) and Item 1A (Risk Factors), stop before Item 7."""
     lines = text.splitlines()
-    output = []
-    capturing = False
-    section_chars = 0
-    MAX_SECTION = 30000  # cap to avoid overwhelming the pipeline
+    MAX_CHARS = 90000
 
-    keep_re = [re.compile(p, re.IGNORECASE) for p in TENK_KEEP_PATTERNS]
-    stop_re = [re.compile(p, re.IGNORECASE) for p in TENK_STOP_PATTERNS]
+    def norm(s):
+        return s.replace("\xa0", " ").strip()
 
-    # Find where Item 1 starts
-    item1_found = False
+    # Find all occurrences of "Item 1." followed by "Business" nearby
+    item1_indices = []
     for i, line in enumerate(lines):
-        if re.search(r"Item\s+1[.\s]+Business", line, re.IGNORECASE):
-            item1_found = True
-            start_idx = i
+        c = norm(line)
+        if re.match(r"Item\s+1[.\s]", c, re.IGNORECASE):
+            window = " ".join(norm(l) for l in lines[i:i+15])
+            if re.search(r"Business", window, re.IGNORECASE):
+                item1_indices.append(i)
+
+    if not item1_indices:
+        print("  [warn] Could not locate Item 1 — using first 40,000 chars")
+        return text[:MAX_CHARS]
+
+    # Use the last occurrence — the actual content section, not table of contents
+    start_idx = item1_indices[-1]
+    print(f"  Item 1 (Business) at line {start_idx} (of {len(item1_indices)} matches)")
+
+    # Find stop: Item 7 or financial statements
+    stop_idx = len(lines)
+    for i, line in enumerate(lines[start_idx + 50:], start=start_idx + 50):
+        c = norm(line)
+        if re.search(r"^Item\s+7[.\s]", c, re.IGNORECASE):
+            stop_idx = i
+            break
+        if re.search(r"FINANCIAL STATEMENTS|CONSOLIDATED BALANCE|^F-\d+\s*$", c):
+            stop_idx = i
             break
 
-    if not item1_found:
-        print("  [warn] Could not locate Item 1 — using first 30,000 chars")
-        return text[:30000]
+    print(f"  Extracting lines {start_idx}–{stop_idx} ({stop_idx - start_idx} lines)")
 
-    for line in lines[start_idx:]:
-        # Stop at financial statements
-        if re.search(r"Item\s+[789][.\s]|FINANCIAL STATEMENTS|F-\d+\s*$|SIGNATURES", line, re.IGNORECASE):
-            break
-        # Stop at MD&A (we want business description and risk factors, not financial analysis)
-        if re.search(r"Item\s+7[.\s]", line, re.IGNORECASE):
-            break
-
-        # Skip lines that are pure table formatting or financial data rows
-        if re.match(r"^[\$\s\d\.,\(\)]+$", line) and len(line) > 10:
+    output = []
+    chars = 0
+    prev_blank = False
+    for line in lines[start_idx:stop_idx]:
+        c = norm(line)
+        if not c:
+            if not prev_blank:
+                output.append("")
+            prev_blank = True
             continue
-        if re.match(r"^[\s\-\*=]+$", line):
-            continue
-
-        output.append(line)
-        section_chars += len(line)
-        if section_chars >= MAX_SECTION:
-            output.append("\n[... remainder of section truncated for pipeline context window ...]")
+        prev_blank = False
+        clean = line.replace("\xa0", " ")
+        output.append(clean)
+        chars += len(clean)
+        if chars >= MAX_CHARS:
+            output.append("[... section truncated at 40,000 chars ...]")
             break
 
-    if len(output) < 100:
-        print("  [warn] Extracted very little — using first 30,000 chars")
-        return text[:30000]
+    if chars < 500:
+        print("  [warn] Very little extracted — using first 40,000 chars")
+        return text[:MAX_CHARS]
 
     return "\n".join(output)
 
