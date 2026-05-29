@@ -1,9 +1,12 @@
 """
 PrismForge AI v4 — Dynamic Semantic Topology (DST) Engine
-Multi-agent LangGraph pipeline for corporate due diligence risk analysis.
+Spec-compliant implementation: LangGraph sub-graphs per document, workers dispatched
+via Send from route_matrix_to_workers conditional edge.
 
-Architecture: Directory Crawler → per-file sub-graph (Router → Chunk → Fan-out Workers → Handoff)
-              → Master Round-Table Node → Final Risk Report
+Architecture:
+  Parent: directory_crawler → dispatch_subgraphs → [doc_pipeline × N] → master_round_table_node
+  Sub-graph (per file): router_node → chunk_node → route_matrix_to_workers
+                        → [extraction_worker × chunks×lenses] → handoff_node
 """
 
 import asyncio
@@ -80,11 +83,11 @@ class WorkerPayload(BaseModel):
     source_file: str
     chunk_index: int
     target_chunk_text: str
-    semantic_summary: str  # stamped at dispatch time from DocumentSubState["semantic_summary"]
+    semantic_summary: str  # stamped at dispatch time (Invariant W2)
 
 
 # ── LLM Singletons (Invariant S1) ────────────────────────────────────────────
-# Instantiated once at module scope — never inside a node, edge function, or worker.
+# All four instantiated once at module scope — never inside any node or worker.
 
 router_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
 structured_router = router_llm.with_structured_output(RouterOutput)
@@ -92,7 +95,7 @@ structured_router = router_llm.with_structured_output(RouterOutput)
 llm = ChatAnthropic(model="claude-sonnet-4-20250514")
 structured_llm = llm.with_structured_output(UniversalForm)
 
-# Chunker singleton (Decision 3.5): chunk_size in characters, not tokens
+# Chunker singleton (Decision 3.5, Invariant C1): chunk_size is characters, not tokens
 splitter = RecursiveCharacterTextSplitter(chunk_size=4000, chunk_overlap=800)
 
 
@@ -100,20 +103,26 @@ splitter = RecursiveCharacterTextSplitter(chunk_size=4000, chunk_overlap=800)
 
 class ParentState(TypedDict):
     directory_path: str
-    # merge reducer — parallel sub-graph handoffs accumulate, never overwrite (Invariant P1)
-    summary_store: Annotated[Dict[str, str], lambda a, b: {**a, **b}]
-    crawled_files: List[str]           # single write by crawler, no reducer (Invariant P2)
-    global_inbox: Annotated[List[ExtractionRecord], add]
+    crawled_files: List[str]                                                    # no reducer — single write (Invariant P2)
+    summary_store: Annotated[Dict[str, str], lambda a, b: {**a, **b}]          # merge reducer (Invariant P1)
+    global_inbox: Annotated[List[ExtractionRecord], add]                        # append reducer
     master_risk_report: str
 
 
 class DocumentSubState(TypedDict):
+    # ── Internal processing fields ──────────────────────────────────────────
     source_material: str
     file_name: str
     semantic_summary: str
     dynamic_topology: List[str]
     document_chunks: List[str]
-    local_inbox: Annotated[List[ExtractionRecord], add]
+    local_inbox: Annotated[List[ExtractionRecord], add]                         # workers write here
+    # ── Output fields ────────────────────────────────────────────────────────
+    # Written by handoff_node. Keys overlap with ParentState so LangGraph
+    # propagates them to the parent when the sub-graph completes. Reducers
+    # match ParentState to ensure parallel sub-graphs accumulate correctly.
+    global_inbox: Annotated[List[ExtractionRecord], add]                        # handoff maps local_inbox → here
+    summary_store: Annotated[Dict[str, str], lambda a, b: {**a, **b}]          # handoff maps file_name:summary → here
     # gap_detected and blind_spots intentionally absent (removed v6 — Decision 3.16)
 
 
@@ -143,8 +152,8 @@ identify cross-document contradictions and dependencies.
 
 Extract ONE primary finding per call. Focus on concrete, evidence-backed liability risks.
 Cross-reference dependencies should name specific OTHER files when contradictions or interactions exist.
-Use implied_liability_score 1-10 where 9-10 = existential/critical risk, 7-8 = major risk,
-5-6 = significant risk, 3-4 = moderate risk, 1-2 = minor/informational."""
+Use implied_liability_score 1-10 where 9-10 = existential/critical, 7-8 = major,
+5-6 = significant, 3-4 = moderate, 1-2 = minor."""
 
 SYNTHESIS_SYSTEM_PROMPT = """You are a senior corporate due diligence risk analyst preparing a final investment risk report.
 
@@ -164,8 +173,8 @@ REQUIRED REPORT STRUCTURE:
 (All findings with implied_liability_score >= 8, with evidence quotes and cross-document links)
 
 ## Cross-Document Contradictions
-(Explicitly name every contradiction identified across documents — e.g. File A's IP warranty vs
-File B's GPL dependency disclosure. Quote both sides. Explain the legal/financial consequence.)
+(Explicitly name every contradiction identified across documents. Quote both sides.
+Explain the legal/financial consequence.)
 
 ## Risk Analysis by Category
 (Group remaining findings by lens_name/risk domain)
@@ -181,8 +190,7 @@ Rules:
 - Name specific files for every cross-document contradiction
 - Include verbatim evidence quotes for all critical findings
 - Do NOT omit any finding with implied_liability_score >= 7
-- Be specific, technical, and legally precise
-- Format tables where helpful for comparison"""
+- Be specific, technical, and legally precise"""
 
 
 # ── Pure Functions ────────────────────────────────────────────────────────────
@@ -191,7 +199,7 @@ def detect_blind_spots(
     crawled_files: List[str],
     global_inbox: List[ExtractionRecord]
 ) -> List[str]:
-    """Returns filenames present in crawled_files but absent from global_inbox. Decision 3.16."""
+    """Returns filenames in crawled_files with zero extraction records. Decision 3.16."""
     covered = {record.source_file for record in global_inbox}
     return [f for f in crawled_files if f not in covered]
 
@@ -209,7 +217,6 @@ def compress_inbox(
     """
     if len(global_inbox) <= limit:
         return global_inbox, ""
-
     sorted_records = sorted(
         global_inbox,
         key=lambda r: r.payload.implied_liability_score,
@@ -226,44 +233,43 @@ def compress_inbox(
     return truncated, warning
 
 
-# ── Fan-Out Matrix Builder (Decision 3.7) ─────────────────────────────────────
+# ── Sub-graph Nodes ───────────────────────────────────────────────────────────
 
-def route_matrix_to_workers(
-    file_name: str,
-    document_chunks: List[str],
-    dynamic_topology: List[str],
-    semantic_summary: str,
-) -> List[Dict[str, Any]]:
+async def router_node(state: DocumentSubState) -> Dict[str, Any]:
     """
-    Builds the Chunks × Lenses cross-product execution matrix.
-    Stamps semantic_summary into every WorkerPayload at dispatch time.
-    Returns primitive dicts only (never Pydantic instances) — Invariant E3.
+    Single combined LLM call per document (Decision 3.15, Invariant R1).
+    Emits semantic_summary and dynamic_topology into DocumentSubState atomically.
     """
-    execution_matrix = []
-    for chunk_idx, chunk_text in enumerate(document_chunks):
-        for lens in dynamic_topology:
-            worker_config = WorkerPayload(
-                lens_name=lens,
-                source_file=file_name,
-                chunk_index=chunk_idx,
-                target_chunk_text=chunk_text,
-                semantic_summary=semantic_summary,  # stamped once per dispatch batch
-            )
-            execution_matrix.append(worker_config.model_dump())  # primitive dict, not Pydantic
-    return execution_matrix
+    result: RouterOutput = await structured_router.ainvoke([
+        {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
+        {"role": "user", "content": state["source_material"]},
+    ])
+    print(
+        f"[router_node] {state['file_name']}: "
+        f"{len(result.dynamic_topology)} lenses: {result.dynamic_topology}"
+    )
+    return {
+        "semantic_summary": result.semantic_summary,
+        "dynamic_topology": result.dynamic_topology,
+    }
 
 
-# ── Async Extraction Worker (Decision 3.2, 3.9) ───────────────────────────────
+def chunk_node(state: DocumentSubState) -> Dict[str, Any]:
+    """Chunks source_material into document_chunks (Decision 3.5, Invariant C1)."""
+    chunks = splitter.split_text(state["source_material"])
+    print(f"[chunk_node] {state['file_name']}: {len(chunks)} chunks")
+    return {"document_chunks": chunks}
+
 
 async def extraction_worker(payload_dict: Dict[str, Any]) -> Dict[str, Any]:
     """
     Exactly one parameter (payload_dict). No state parameter — LangGraph does not
-    inject parent state into Send-dispatched nodes (Invariant X1).
+    inject parent/sub-graph state into Send-dispatched nodes (Invariant X1).
     Entire body wrapped in try/except (Invariant X4) — any failure returns empty list.
+    Uses await ainvoke (Invariant X3). Returns ExtractionRecord, not raw dict (Invariant X5).
     """
     try:
         payload = WorkerPayload(**payload_dict)
-        # Assemble anchored prompt in volatile memory (Decision 3.2)
         anchored_prompt = (
             f"EXTRACTION LENS: {payload.lens_name}\n\n"
             f"GLOBAL FILE CONTEXT:\n{payload.semantic_summary}\n\n"
@@ -288,14 +294,58 @@ async def extraction_worker(payload_dict: Dict[str, Any]) -> Dict[str, Any]:
             f"{payload_dict.get('chunk_index', '?')}"
         )
         print(f"[extraction_worker] FAILED {label}: {e}")
-        return {"local_inbox": []}  # Invariant X4: never crashes pool
+        return {"local_inbox": []}  # Invariant X4: never crashes the pool
 
 
-# ── LangGraph Nodes ───────────────────────────────────────────────────────────
+def handoff_node(sub_state: DocumentSubState) -> Dict[str, Any]:
+    """
+    Single handoff per sub-graph, fires after all workers complete (Invariants H1, H2).
+    Writes both summary_store and global_inbox in one atomic return dict (Decision 3.1, 3.3).
+    Keys overlap with ParentState — LangGraph propagates them via parent reducers.
+    """
+    return {
+        "global_inbox": sub_state["local_inbox"],
+        "summary_store": {sub_state["file_name"]: sub_state["semantic_summary"]},
+    }
+
+
+# ── Conditional Edge: Fan-Out Matrix (Decision 3.7) ──────────────────────────
+
+def route_matrix_to_workers(state: DocumentSubState) -> List[Send]:
+    """
+    Single state: DocumentSubState parameter only (Invariant E1).
+    Reads semantic_summary from sub-graph state — always present because router_node
+    ran earlier in the same sub-graph execution (Invariant E2).
+    Emits Send("extraction_worker", primitive_dict) — never a Pydantic instance (Invariant E3).
+    Stamps semantic_summary into every WorkerPayload at dispatch time (Invariant E4).
+    """
+    execution_matrix = []
+    summary = state.get("semantic_summary", "")  # written by router_node; always present here
+    for chunk_idx, chunk_text in enumerate(state["document_chunks"]):
+        for lens in state["dynamic_topology"]:
+            worker_config = WorkerPayload(
+                lens_name=lens,
+                source_file=state["file_name"],
+                chunk_index=chunk_idx,
+                target_chunk_text=chunk_text,
+                semantic_summary=summary,
+            )
+            execution_matrix.append(
+                Send("extraction_worker", worker_config.model_dump())  # primitive dict (Invariant W1)
+            )
+    print(
+        f"[route_matrix_to_workers] {state['file_name']}: "
+        f"dispatching {len(execution_matrix)} workers "
+        f"({len(state['document_chunks'])} chunks × {len(state['dynamic_topology'])} lenses)"
+    )
+    return execution_matrix
+
+
+# ── Parent Graph Nodes ────────────────────────────────────────────────────────
 
 def directory_crawler(state: ParentState) -> Dict[str, Any]:
     """
-    Defensive read loop — skips unreadable/binary files silently. Decision 3.6.
+    Defensive read loop — skips unreadable/binary files silently (Decision 3.6).
     Populates crawled_files before any sub-graph runs (Invariant P2).
     """
     directory = Path(state["directory_path"])
@@ -311,98 +361,35 @@ def directory_crawler(state: ParentState) -> Dict[str, Any]:
     return {"crawled_files": crawled_files}
 
 
-async def process_document(state: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Per-document sub-graph (Decisions 3.1–3.7, 3.15):
-      router_node → chunk_node → route_matrix_to_workers → extraction_worker pool → handoff_node
-
-    Receives {source_material, file_name} via Send dispatch.
-    Returns {global_inbox, summary_store} for parent state accumulation via reducers.
-    """
-    source_material: str = state["source_material"]
-    file_name: str = state["file_name"]
-
-    print(f"[process_document] Starting: {file_name}")
-
-    # ── Router node: single combined call (Decision 3.15, Invariant R1) ──────
-    router_result: RouterOutput = await structured_router.ainvoke([
-        {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
-        {"role": "user", "content": source_material},
-    ])
-    print(
-        f"[process_document] {file_name}: router complete, "
-        f"{len(router_result.dynamic_topology)} lenses: {router_result.dynamic_topology}"
-    )
-
-    # ── Chunk node (Decision 3.5, Invariant C1) ───────────────────────────────
-    document_chunks = splitter.split_text(source_material)
-    print(f"[process_document] {file_name}: {len(document_chunks)} chunks")
-
-    # ── Fan-out matrix (Decision 3.7) ─────────────────────────────────────────
-    payloads = route_matrix_to_workers(
-        file_name=file_name,
-        document_chunks=document_chunks,
-        dynamic_topology=router_result.dynamic_topology,
-        semantic_summary=router_result.semantic_summary,
-    )
-    print(f"[process_document] {file_name}: dispatching {len(payloads)} workers")
-
-    # ── Async worker pool (Decision 3.4) ──────────────────────────────────────
-    # asyncio.gather provides concurrent execution within the sub-graph.
-    # max_concurrency at graph invocation caps parallel document pipelines.
-    worker_results = await asyncio.gather(
-        *[extraction_worker(p) for p in payloads],
-        return_exceptions=True,
-    )
-
-    # ── Collect results ────────────────────────────────────────────────────────
-    local_inbox: List[ExtractionRecord] = []
-    for r in worker_results:
-        if isinstance(r, dict) and r.get("local_inbox"):
-            local_inbox.extend(r["local_inbox"])
-
-    print(
-        f"[process_document] {file_name}: {len(local_inbox)}/{len(payloads)} "
-        f"workers produced records"
-    )
-
-    # ── Handoff node (Decisions 3.1, 3.3, Invariants H1, H2) ─────────────────
-    # Single atomic return dict — no pre-fan-out handoff exists.
-    # global_inbox accumulated via add reducer; summary_store via merge reducer.
-    return {
-        "global_inbox": local_inbox,
-        "summary_store": {file_name: router_result.semantic_summary},
-    }
-
-
 async def master_round_table_node(state: ParentState) -> Dict[str, Any]:
     """
     Terminal synthesis node (Decisions 3.10, 3.16):
     Preamble: detect_blind_spots() → compress_inbox()
-    Synthesis: single-shot long-context Markdown report.
+    Synthesis: single-shot long-context Markdown report (Invariant M1).
+    Synthesis receives compressed records, never raw global_inbox (Invariant M2).
+    detect_blind_spots is a Python filter here, not a graph node (Invariant M3).
     """
     print(
-        f"[master_round_table_node] Starting synthesis: "
-        f"{len(state['global_inbox'])} total records from "
-        f"{len(state['crawled_files'])} crawled files"
+        f"[master_round_table_node] Synthesizing: "
+        f"{len(state['global_inbox'])} records from "
+        f"{len(state['crawled_files'])} files"
     )
 
-    # ── Preamble 1: detect blind spots (Decision 3.16, Invariant M3) ─────────
+    # Preamble 1: detect blind spots (Decision 3.16)
     blind_spots = detect_blind_spots(state["crawled_files"], state["global_inbox"])
     blind_spot_block = ""
     if blind_spots:
         blind_spot_block = (
             "\n\n## ⚠️ Coverage Gaps Detected\n"
-            "The following files produced no extraction records and are excluded from the analysis:\n"
+            "The following files produced no extraction records:\n"
             + "\n".join(f"- `{f}`" for f in blind_spots)
             + "\n"
         )
-        print(f"[master_round_table_node] Blind spots detected: {blind_spots}")
+        print(f"[master_round_table_node] Blind spots: {blind_spots}")
 
-    # ── Preamble 2: compress inbox (Decision 3.10, Invariant M2) ─────────────
+    # Preamble 2: compress inbox (Decision 3.10)
     records_for_synthesis, truncation_warning = compress_inbox(state["global_inbox"])
 
-    # ── Synthesis prompt assembly ─────────────────────────────────────────────
     inbox_payload = json.dumps(
         [r.model_dump() for r in records_for_synthesis],
         indent=2,
@@ -410,43 +397,37 @@ async def master_round_table_node(state: ParentState) -> Dict[str, Any]:
     synthesis_prompt = (
         blind_spot_block
         + truncation_warning
-        + f"\n\nTotal extraction records: {len(records_for_synthesis)}\n"
+        + f"\n\nTotal records: {len(records_for_synthesis)}\n"
         + f"Files analyzed: {list(state['summary_store'].keys())}\n\n"
         + "EXTRACTION RECORDS:\n"
         + inbox_payload
     )
 
-    # ── Single-shot synthesis (Decision 3.10, Invariant M1) ──────────────────
     response = await llm.ainvoke([
         {"role": "system", "content": SYNTHESIS_SYSTEM_PROMPT},
         {"role": "user", "content": synthesis_prompt},
     ])
-
-    # Extract text content from AIMessage (handles both str and list content)
     content = response.content
     if isinstance(content, str):
         report = content
     elif isinstance(content, list):
-        parts = []
-        for part in content:
-            if isinstance(part, str):
-                parts.append(part)
-            elif isinstance(part, dict) and "text" in part:
-                parts.append(part["text"])
-        report = "".join(parts)
+        report = "".join(
+            p if isinstance(p, str) else p.get("text", "")
+            for p in content
+        )
     else:
         report = str(content)
 
-    print(f"[master_round_table_node] Synthesis complete: {len(report)} characters")
+    print(f"[master_round_table_node] Report: {len(report)} characters")
     return {"master_risk_report": report}
 
 
-# ── Conditional Edge: document dispatcher ─────────────────────────────────────
+# ── Conditional Edge: Sub-graph Dispatcher ───────────────────────────────────
 
-def dispatch_documents(state: ParentState) -> List[Send]:
+def dispatch_subgraphs(state: ParentState) -> List[Send]:
     """
-    After directory_crawler completes, dispatch one process_document node per file.
-    Re-reads file content here so crawled_files stays as List[str] per spec.
+    Dispatches one doc_pipeline sub-graph per crawled file via Send.
+    Passes a fully initialized DocumentSubState so the sub-graph starts clean.
     """
     directory = Path(state["directory_path"])
     sends = []
@@ -456,29 +437,54 @@ def dispatch_documents(state: ParentState) -> List[Send]:
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
         except Exception as e:
-            print(f"[dispatch_documents] Could not re-read {filename}: {e}")
+            print(f"[dispatch_subgraphs] Could not re-read {filename}: {e}")
             continue
-        sends.append(
-            Send("process_document", {
-                "source_material": content,
-                "file_name": filename,
-            })
-        )
-    print(f"[dispatch_documents] Dispatching {len(sends)} document sub-graphs")
+        sends.append(Send("doc_pipeline", {
+            "source_material": content,
+            "file_name": filename,
+            "semantic_summary": "",
+            "dynamic_topology": [],
+            "document_chunks": [],
+            "local_inbox": [],
+            "global_inbox": [],
+            "summary_store": {},
+        }))
+    print(f"[dispatch_subgraphs] Dispatching {len(sends)} sub-graphs")
     return sends
 
 
-# ── Graph Construction ────────────────────────────────────────────────────────
+# ── Sub-graph Compilation ─────────────────────────────────────────────────────
+# StateGraph(DocumentSubState): internal nodes communicate through DocumentSubState.
+# global_inbox and summary_store are output fields that overlap with ParentState —
+# LangGraph propagates them to the parent via the parent's reducers when the sub-graph ends.
+
+_sub_builder = StateGraph(DocumentSubState)
+
+_sub_builder.add_node("router_node", router_node)
+_sub_builder.add_node("chunk_node", chunk_node)
+_sub_builder.add_node("extraction_worker", extraction_worker)
+_sub_builder.add_node("handoff_node", handoff_node)
+
+_sub_builder.add_edge(START, "router_node")
+_sub_builder.add_edge("router_node", "chunk_node")
+_sub_builder.add_conditional_edges("chunk_node", route_matrix_to_workers, ["extraction_worker"])
+_sub_builder.add_edge("extraction_worker", "handoff_node")
+_sub_builder.add_edge("handoff_node", END)
+
+doc_pipeline = _sub_builder.compile()
+
+
+# ── Parent Graph Construction ─────────────────────────────────────────────────
 
 _builder = StateGraph(ParentState)
 
 _builder.add_node("directory_crawler", directory_crawler)
-_builder.add_node("process_document", process_document)
+_builder.add_node("doc_pipeline", doc_pipeline)       # compiled sub-graph as a node
 _builder.add_node("master_round_table_node", master_round_table_node)
 
 _builder.add_edge(START, "directory_crawler")
-_builder.add_conditional_edges("directory_crawler", dispatch_documents, ["process_document"])
-_builder.add_edge("process_document", "master_round_table_node")
+_builder.add_conditional_edges("directory_crawler", dispatch_subgraphs, ["doc_pipeline"])
+_builder.add_edge("doc_pipeline", "master_round_table_node")
 _builder.add_edge("master_round_table_node", END)
 
 graph = _builder.compile()
@@ -489,13 +495,13 @@ graph = _builder.compile()
 async def run_graph(directory_path: str) -> str:
     """
     Invokes the compiled graph with max_concurrency=50 (Invariant I1, Decision 3.4).
-    Never asyncio.run() — caller must use nest_asyncio + get_event_loop().run_until_complete()
-    from Streamlit (Invariant I2, Decision 3.11).
+    Caller must use nest_asyncio + get_event_loop().run_until_complete() from Streamlit
+    (Invariant I2, Decision 3.11). Never asyncio.run() inside Streamlit.
     """
     inputs: ParentState = {
         "directory_path": str(directory_path),
-        "summary_store": {},
         "crawled_files": [],
+        "summary_store": {},
         "global_inbox": [],
         "master_risk_report": "",
     }
