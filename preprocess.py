@@ -172,18 +172,21 @@ def extract_hp_agreement(text: str) -> str:
             output.append(line)
 
     # If extraction caught nothing useful, fall back to full text
-    # (truncated to avoid overwhelming the pipeline)
     if len(output) < 200:
         print("  [warn] Section extraction found little content — using full text")
-        return text[:40000]
+        return text[:20000]
 
-    return "\n".join(output)
+    result = "\n".join(output)
+    # Cap to keep worker count within API rate limits (~5 chunks × 5 lenses = 25 workers)
+    if len(result) > 20000:
+        result = result[:20000] + "\n[... truncated to fit API rate limits ...]"
+    return result
 
 
 def extract_dot_hill_10k(text: str) -> str:
     """Extract Item 1 (Business) and Item 1A (Risk Factors), stop before Item 7."""
     lines = text.splitlines()
-    MAX_CHARS = 40000
+    MAX_CHARS = 20000
 
     def norm(s):
         return s.replace("\xa0", " ").strip()
