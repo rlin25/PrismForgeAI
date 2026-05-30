@@ -243,7 +243,7 @@ def extract_dot_hill_10k(text: str) -> str:
     return "\n".join(output)
 
 
-def process_file(htm_path: Path) -> Path | None:
+def process_file(htm_path: Path):
     """Process a single .htm file and write clean .txt to data_room/."""
     print(f"Processing: {htm_path.name}")
 
