@@ -324,8 +324,10 @@ def handoff_node(sub_state: DocumentSubState) -> Dict[str, Any]:
     """
     Single handoff per sub-graph, fires after all workers complete (Invariants H1, H2).
     Writes both summary_store and global_inbox in one atomic return dict (Decision 3.1, 3.3).
+    Logs completion so the UI diagram can mark the sub-graph done.
     Keys overlap with ParentState — LangGraph propagates them via parent reducers.
     """
+    _log(f"[handoff_node] {sub_state['file_name']}: complete ({len(sub_state['local_inbox'])} records)")
     return {
         "global_inbox": sub_state["local_inbox"],
         "summary_store": {sub_state["file_name"]: sub_state["semantic_summary"]},
