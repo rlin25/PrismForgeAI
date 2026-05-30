@@ -214,8 +214,8 @@ with st.container():
                 with st.expander(_doc.name):
                     try:
                         _text = _doc.read_text(encoding="utf-8", errors="replace")
-                        st.code(_text[:1500] + ("\n\n[... truncated ...]" if len(_text) > 1500 else ""), language=None)
-                        st.caption(f"{len(_text):,} characters total")
+                        st.code(_text, language=None)
+                        st.caption(f"{len(_text):,} characters")
                     except Exception:
                         st.error("Could not read file.")
         else:
