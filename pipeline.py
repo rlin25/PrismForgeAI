@@ -13,7 +13,14 @@ import asyncio
 import json
 from pathlib import Path
 from operator import add
-from typing import Annotated, Any, Dict, List, Tuple
+from typing import Annotated, Any, Callable, Dict, List, Tuple
+
+# ── Progress logging hook ─────────────────────────────────────────────────────
+# Defaults to print. app.py replaces this with a queue callback for live UI.
+_log_fn: Callable[[str], None] = print
+
+def _log(msg: str) -> None:
+    _log_fn(msg)
 
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -244,7 +251,7 @@ async def router_node(state: DocumentSubState) -> Dict[str, Any]:
         {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
         {"role": "user", "content": state["source_material"]},
     ])
-    print(
+    _log(
         f"[router_node] {state['file_name']}: "
         f"{len(result.dynamic_topology)} lenses: {result.dynamic_topology}"
     )
@@ -257,7 +264,7 @@ async def router_node(state: DocumentSubState) -> Dict[str, Any]:
 def chunk_node(state: DocumentSubState) -> Dict[str, Any]:
     """Chunks source_material into document_chunks (Decision 3.5, Invariant C1)."""
     chunks = splitter.split_text(state["source_material"])
-    print(f"[chunk_node] {state['file_name']}: {len(chunks)} chunks")
+    _log(f"[chunk_node] {state['file_name']}: {len(chunks)} chunks")
     return {"document_chunks": chunks}
 
 
@@ -293,7 +300,7 @@ async def extraction_worker(payload_dict: Dict[str, Any]) -> Dict[str, Any]:
             f"{payload_dict.get('source_file', '?')}/"
             f"{payload_dict.get('chunk_index', '?')}"
         )
-        print(f"[extraction_worker] FAILED {label}: {e}")
+        _log(f"[extraction_worker] FAILED {label}: {e}")
         return {"local_inbox": []}  # Invariant X4: never crashes the pool
 
 
@@ -333,7 +340,7 @@ def route_matrix_to_workers(state: DocumentSubState) -> List[Send]:
             execution_matrix.append(
                 Send("extraction_worker", worker_config.model_dump())  # primitive dict (Invariant W1)
             )
-    print(
+    _log(
         f"[route_matrix_to_workers] {state['file_name']}: "
         f"dispatching {len(execution_matrix)} workers "
         f"({len(state['document_chunks'])} chunks × {len(state['dynamic_topology'])} lenses)"
@@ -357,7 +364,7 @@ def directory_crawler(state: ParentState) -> Dict[str, Any]:
             crawled_files.append(file_path.name)
         except (UnicodeDecodeError, IsADirectoryError, PermissionError):
             continue
-    print(f"[directory_crawler] Found {len(crawled_files)} readable files: {crawled_files}")
+    _log(f"[directory_crawler] Found {len(crawled_files)} readable files: {crawled_files}")
     return {"crawled_files": crawled_files}
 
 
@@ -369,7 +376,7 @@ async def master_round_table_node(state: ParentState) -> Dict[str, Any]:
     Synthesis receives compressed records, never raw global_inbox (Invariant M2).
     detect_blind_spots is a Python filter here, not a graph node (Invariant M3).
     """
-    print(
+    _log(
         f"[master_round_table_node] Synthesizing: "
         f"{len(state['global_inbox'])} records from "
         f"{len(state['crawled_files'])} files"
@@ -385,7 +392,7 @@ async def master_round_table_node(state: ParentState) -> Dict[str, Any]:
             + "\n".join(f"- `{f}`" for f in blind_spots)
             + "\n"
         )
-        print(f"[master_round_table_node] Blind spots: {blind_spots}")
+        _log(f"[master_round_table_node] Blind spots: {blind_spots}")
 
     # Preamble 2: compress inbox (Decision 3.10)
     records_for_synthesis, truncation_warning = compress_inbox(state["global_inbox"])
@@ -418,7 +425,7 @@ async def master_round_table_node(state: ParentState) -> Dict[str, Any]:
     else:
         report = str(content)
 
-    print(f"[master_round_table_node] Report: {len(report)} characters")
+    _log(f"[master_round_table_node] Report: {len(report)} characters")
     return {"master_risk_report": report}
 
 
@@ -437,7 +444,7 @@ def dispatch_subgraphs(state: ParentState) -> List[Send]:
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
         except Exception as e:
-            print(f"[dispatch_subgraphs] Could not re-read {filename}: {e}")
+            _log(f"[dispatch_subgraphs] Could not re-read {filename}: {e}")
             continue
         sends.append(Send("doc_pipeline", {
             "source_material": content,
@@ -449,7 +456,7 @@ def dispatch_subgraphs(state: ParentState) -> List[Send]:
             "global_inbox": [],
             "summary_store": {},
         }))
-    print(f"[dispatch_subgraphs] Dispatching {len(sends)} sub-graphs")
+    _log(f"[dispatch_subgraphs] Dispatching {len(sends)} sub-graphs")
     return sends
 
 

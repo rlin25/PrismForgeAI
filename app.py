@@ -1,28 +1,95 @@
 """
 PrismForge AI v4 — Streamlit Frontend
-Async bridge: pipeline runs in a dedicated thread with a fresh event loop.
-This avoids "Future attached to a different loop" errors that occur when
-LangGraph's concurrent Send dispatch interacts with Streamlit's internal loop.
+Async bridge: pipeline runs in a dedicated thread with a fresh event loop (Decision 3.23).
+Progress feed: pipeline log messages streamed to UI via queue.SimpleQueue.
 """
 
 import asyncio
 import concurrent.futures
 import os
+import queue
+import re
+import time
 from pathlib import Path
 
 import streamlit as st
 
+import pipeline as _pipeline
 from pipeline import run_graph
 
 
-def _run_pipeline(directory_path: str) -> str:
-    """Run the async pipeline in a fresh event loop on a dedicated thread."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+# ── Progress formatting ───────────────────────────────────────────────────────
+
+def _fmt(raw: str) -> str:
+    """Format a pipeline log line for the progress display."""
+    # [directory_crawler] Found 3 readable files: [...]
+    m = re.match(r"\[directory_crawler\] Found (\d+) readable files: (.+)", raw)
+    if m:
+        return f"  Files found: {m.group(2)}"
+
+    # [dispatch_subgraphs] Dispatching N sub-graphs
+    m = re.match(r"\[dispatch_subgraphs\] Dispatching (\d+) sub-graphs", raw)
+    if m:
+        return f"\nDispatching {m.group(1)} document sub-graphs in parallel...\n"
+
+    # [router_node] file.txt: N lenses: [...]
+    m = re.match(r"\[router_node\] (.+?): (\d+) lenses: (.+)", raw)
+    if m:
+        lenses = m.group(3).strip("[]").replace("'", "")
+        return f"  {m.group(1)}\n    Lenses assigned: {lenses}"
+
+    # [chunk_node] file.txt: N chunks
+    m = re.match(r"\[chunk_node\] (.+?): (\d+) chunks", raw)
+    if m:
+        return f"    Chunks: {m.group(2)}"
+
+    # [route_matrix_to_workers] file.txt: dispatching N workers (X chunks x Y lenses)
+    m = re.match(r"\[route_matrix_to_workers\] (.+?): dispatching (\d+) workers \((.+)\)", raw)
+    if m:
+        return f"    Workers dispatched: {m.group(2)}  ({m.group(3)})"
+
+    # [extraction_worker] FAILED ...
+    if "[extraction_worker] FAILED" in raw:
+        return f"    [rate limit / error — worker skipped]"
+
+    # [master_round_table_node] Synthesizing: N records from M files
+    m = re.match(r"\[master_round_table_node\] Synthesizing: (\d+) records from (\d+) files", raw)
+    if m:
+        return f"\nSynthesizing {m.group(1)} extraction records from {m.group(2)} files..."
+
+    # [master_round_table_node] Report: N characters
+    m = re.match(r"\[master_round_table_node\] Report: (\d+) characters", raw)
+    if m:
+        return f"Report generated ({int(m.group(1)):,} characters)"
+
+    # [master_round_table_node] Blind spots: [...]
+    if "[master_round_table_node] Blind spots" in raw:
+        return f"  Coverage gaps detected: {raw.split(':', 1)[1].strip()}"
+
+    # suppress internal/noisy lines
+    if any(x in raw for x in ["[dispatch_subgraphs] Could not", "Item 1", "Extracting lines"]):
+        return None
+
+    return None   # suppress unrecognised lines
+
+
+# ── Pipeline runner ───────────────────────────────────────────────────────────
+
+def _run_pipeline(directory_path: str, progress_q) -> str:
+    """Run pipeline in a fresh event loop, routing logs to the progress queue."""
+    _pipeline._log_fn = progress_q.put_nowait
     try:
-        return loop.run_until_complete(run_graph(directory_path))
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(run_graph(directory_path))
+        finally:
+            loop.close()
     finally:
-        loop.close()
+        _pipeline._log_fn = print   # restore for any subsequent non-UI use
+
+
+# ── Streamlit UI ──────────────────────────────────────────────────────────────
 
 st.set_page_config(
     page_title="PrismForge AI — Due Diligence Risk Report",
@@ -74,15 +141,54 @@ with col_cfg:
         elif not target.is_dir():
             st.error(f"Not a directory: {data_room_path}")
         else:
-            with st.spinner("Analyzing documents… This may take several minutes."):
+            progress_q = queue.SimpleQueue()
+
+            with st.status("Running pipeline...", expanded=True) as status:
+                st.markdown("**Pipeline progress**")
+                log_placeholder = st.empty()
+                lines = []
+
                 try:
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                        report = ex.submit(_run_pipeline, data_room_path).result(timeout=600)
+                        future = ex.submit(_run_pipeline, data_room_path, progress_q)
+
+                        while not future.done():
+                            changed = False
+                            for _ in range(50):
+                                try:
+                                    raw = progress_q.get_nowait()
+                                    fmt = _fmt(raw)
+                                    if fmt is not None:
+                                        lines.append(fmt)
+                                        changed = True
+                                except queue.Empty:
+                                    break
+                            if changed:
+                                log_placeholder.code(
+                                    "\n".join(lines), language=None
+                                )
+                            time.sleep(0.15)
+
+                        # drain remaining messages
+                        while True:
+                            try:
+                                raw = progress_q.get_nowait()
+                                fmt = _fmt(raw)
+                                if fmt is not None:
+                                    lines.append(fmt)
+                            except queue.Empty:
+                                break
+                        log_placeholder.code("\n".join(lines), language=None)
+
+                        report = future.result(timeout=600)
+
                     st.session_state["report"] = report
                     st.session_state["report_path"] = data_room_path
-                    st.success("Analysis complete.")
+                    status.update(label="Analysis complete", state="complete", expanded=False)
+
                 except Exception as exc:
-                    st.error(f"Pipeline error: {exc}")
+                    status.update(label=f"Pipeline error: {exc}", state="error")
+                    st.error(str(exc))
                     raise
 
 with col_report:
