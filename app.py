@@ -163,6 +163,63 @@ def _parse_worker_event(raw: str):
     return None
 
 
+# ── Progress log HTML renderer with per-line tooltips ─────────────────────────
+
+_LOG_TIPS = [
+    (r"Files found:",
+     "The directory crawler successfully read these files. Binary and unreadable files are silently skipped."),
+    (r"Dispatching \d+ document sub-graphs",
+     "One isolated LangGraph sub-graph per file — they run in parallel. Each sub-graph owns its own router → chunk → worker → handoff pipeline."),
+    (r"Lenses assigned:",
+     "The router's output: Gemini Flash read the full document in a single call and selected these extraction lenses based on the document's specific content. Different documents get different lenses — this is the Dynamic Semantic Topology (DST) feature."),
+    (r"Chunks:",
+     "The document was split into overlapping 4,000-character segments (800-char overlap). One Claude Haiku worker will be dispatched per Chunk × Lens pair."),
+    (r"Workers:",
+     "One Claude Haiku API call per Chunk × Lens combination. All workers run concurrently. The counter updates as each call completes, retries on rate limits, or permanently fails."),
+    (r"Synthesizing \d+ extraction records",
+     "All worker results collected. Records are sorted by risk score descending, capped at 500, and passed to Claude Sonnet in a single long-context call that produces the final cross-referenced report."),
+    (r"Report generated",
+     "Synthesis complete. The Markdown report appears below — cross-document contradictions, critical findings by risk score, executive summary, and recommendations."),
+    (r"Coverage gaps:",
+     "Files that were crawled but produced zero extraction records — either the content was empty or all workers failed. Named explicitly in the report rather than silently omitted."),
+    (r"\[rate limited",
+     "A worker received a 429 rate-limit error from the API. It will retry with exponential backoff (15s then 30s) before giving up."),
+    (r"\[worker failed",
+     "A worker exhausted all retries and returned no finding for that Chunk × Lens pair. The remaining workers continue — the pool never crashes on individual failures."),
+]
+
+def _log_line_tip(line: str) -> str:
+    """Return tooltip text for a log line, or empty string."""
+    stripped = line.strip()
+    for pattern, tip in _LOG_TIPS:
+        if re.search(pattern, stripped):
+            return tip
+    return ""
+
+def _log_html(lines: list) -> str:
+    """Render the progress log as HTML with per-line hover tooltips."""
+    if not lines:
+        return ""
+    rows = ['<div style="font-family:monospace;font-size:12px;line-height:1.7;'
+            'background:#f8f9fa;border:1px solid #e5e7eb;border-radius:8px;'
+            'padding:10px 14px;overflow-x:auto;white-space:pre-wrap">']
+    for line in lines:
+        tip = _log_line_tip(line)
+        escaped = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        if tip:
+            rows.append(
+                f'<span class="ua-tip" style="display:block">'
+                f'<span style="cursor:default;display:block">{escaped}</span>'
+                f'<span class="ua-tiptext" style="width:260px;white-space:normal;'
+                f'bottom:auto;top:calc(100% + 4px)">{tip}</span>'
+                f'</span>'
+            )
+        else:
+            rows.append(f'<span style="display:block">{escaped}</span>')
+    rows.append("</div>")
+    return "".join(rows)
+
+
 def _fmt(raw: str):
     m = re.match(r"\[directory_crawler\] Found (\d+) readable files: (.+)", raw)
     if m:
@@ -413,7 +470,7 @@ if run_button:
                                 break
                         if changed:
                             diagram_ph.markdown(_diagram_html(stage_states), unsafe_allow_html=True)
-                            log_ph.code("\n".join(lines), language=None)
+                            log_ph.markdown(_log_html(lines), unsafe_allow_html=True)
                         time.sleep(0.15)
 
                     # Drain remaining
@@ -426,7 +483,7 @@ if run_button:
                     # Final diagram state
                     stage_states["REPORT"] = {"status": "complete", "detail": ""}
                     diagram_ph.markdown(_diagram_html(stage_states), unsafe_allow_html=True)
-                    log_ph.code("\n".join(lines), language=None)
+                    log_ph.markdown(_log_html(lines), unsafe_allow_html=True)
 
                     report = future.result(timeout=600)
 
