@@ -186,10 +186,7 @@ st.title("PrismForge AI v4")
 st.caption("Dynamic Semantic Topology Engine — Corporate Due Diligence Risk Analysis")
 st.divider()
 
-# Config — left third, right stays empty until report is ready
-col_cfg, _ = st.columns([1, 2])
-
-with col_cfg:
+with st.container():
     st.subheader("Configuration")
     default_path = str(Path(__file__).parent / "data_room")
     data_room_path = st.text_input(
