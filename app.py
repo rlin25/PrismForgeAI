@@ -48,9 +48,13 @@ def _fmt(raw: str) -> str:
     if m:
         return f"    Workers dispatched: {m.group(2)}  ({m.group(3)})"
 
+    # [extraction_worker] Rate limited — retrying...
+    if "Rate limited" in raw and "retrying" in raw:
+        return f"    [rate limited — retrying with backoff]"
+
     # [extraction_worker] FAILED ...
     if "[extraction_worker] FAILED" in raw:
-        return f"    [rate limit / error — worker skipped]"
+        return f"    [worker failed after retries — skipped]"
 
     # [master_round_table_node] Synthesizing: N records from M files
     m = re.match(r"\[master_round_table_node\] Synthesizing: (\d+) records from (\d+) files", raw)

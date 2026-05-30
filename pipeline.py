@@ -283,10 +283,25 @@ async def extraction_worker(payload_dict: Dict[str, Any]) -> Dict[str, Any]:
             f"TARGET CHUNK (chunk {payload.chunk_index} of {payload.source_file}):\n"
             f"{payload.target_chunk_text}"
         )
-        result: UniversalForm = await structured_llm.ainvoke([
+        messages = [
             {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
             {"role": "user", "content": anchored_prompt},
-        ])
+        ]
+        # Retry on rate-limit errors with exponential backoff (Decision 3.24)
+        result = None
+        for attempt in range(3):
+            try:
+                result = await structured_llm.ainvoke(messages)
+                break
+            except Exception as e:
+                err = str(e)
+                is_rate_limit = "429" in err or "rate_limit" in err.lower() or "rate limit" in err.lower()
+                if is_rate_limit and attempt < 2:
+                    wait = 15 * (2 ** attempt)  # 15s, 30s
+                    _log(f"[extraction_worker] Rate limited — retrying in {wait}s ({payload.lens_name}/{payload.source_file}/{payload.chunk_index})")
+                    await asyncio.sleep(wait)
+                else:
+                    raise
         record = ExtractionRecord(
             lens_name=payload.lens_name,
             source_file=payload.source_file,

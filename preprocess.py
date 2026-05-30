@@ -183,7 +183,7 @@ def extract_hp_agreement(text: str) -> str:
 def extract_dot_hill_10k(text: str) -> str:
     """Extract Item 1 (Business) and Item 1A (Risk Factors), stop before Item 7."""
     lines = text.splitlines()
-    MAX_CHARS = 90000
+    MAX_CHARS = 40000
 
     def norm(s):
         return s.replace("\xa0", " ").strip()
