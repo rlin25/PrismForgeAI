@@ -22,15 +22,41 @@ from pipeline import run_graph
 
 STAGES = ["CRAWL", "ROUTE", "CHUNK", "EXTRACT", "SYNTHESIZE", "REPORT"]
 
+_STAGE_TIPS = {
+    "CRAWL":     "Scans the data room directory and reads every .txt file. Binary or unreadable files are silently skipped. Produces the file list for parallel sub-graph dispatch.",
+    "ROUTE":     "Sends each document to Gemini Flash in a single call that returns both a 200-400 word semantic summary and a tailored set of 3–7 extraction lenses specific to that document's content.",
+    "CHUNK":     "Splits each document into 4,000-character overlapping segments (800-char overlap) using LangChain's RecursiveCharacterTextSplitter — one chunk per extraction worker call.",
+    "EXTRACT":   "Dispatches one Claude Haiku worker per Chunk × Lens pair. All workers run concurrently. Each returns a structured finding: entity, verbatim evidence quote, risk score 1–10, and cross-document dependency links.",
+    "SYNTHESIZE":"Claude Sonnet receives all extraction records sorted by risk score, identifies files with zero coverage, and generates a structured Markdown report in a single long-context call.",
+    "REPORT":    "The finished risk report — cross-referenced contradictions named with evidence quotes, critical findings by score, executive summary, and prioritised recommendations.",
+}
+
 def _diagram_html(stage_states: dict) -> str:
     STYLE = {
         "idle":     ("background:#f3f4f6;color:#9ca3af;border:1.5px solid #e5e7eb", ""),
         "active":   ("background:#dbeafe;color:#1d4ed8;border:1.5px solid #3b82f6;animation:pulse 1.5s ease-in-out infinite", "▶"),
         "complete": ("background:#dcfce7;color:#166534;border:1.5px solid #16a34a", "✓"),
     }
-    # Fixed box dimensions so all bubbles are identical size regardless of detail text
     BOX = "width:100px;height:56px;box-sizing:border-box;"
-    parts = ['<style>@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}</style>',
+    TIP_CSS = """
+    <style>
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+    .ua-tip{position:relative;display:inline-flex;flex-shrink:0}
+    .ua-tip .ua-tiptext{
+        visibility:hidden;opacity:0;
+        background:#1f2937;color:#f9fafb;
+        font-size:11px;font-weight:400;font-family:sans-serif;
+        line-height:1.4;white-space:normal;text-align:left;
+        width:200px;padding:8px 10px;border-radius:7px;
+        position:absolute;bottom:calc(100% + 6px);left:50%;
+        transform:translateX(-50%);z-index:9999;
+        pointer-events:none;transition:opacity 0.15s;
+        box-shadow:0 4px 12px rgba(0,0,0,0.25);
+    }
+    .ua-tip:hover .ua-tiptext{visibility:visible;opacity:1}
+    </style>
+    """
+    parts = [TIP_CSS,
              '<div style="padding:12px 16px;background:#f9fafb;border-radius:10px;'
              'border:1px solid #e5e7eb;white-space:nowrap;overflow-x:auto;'
              'display:flex;align-items:center;gap:0">']
@@ -41,12 +67,16 @@ def _diagram_html(stage_states: dict) -> str:
         detail_div = (f'<div style="font-size:9px;margin-top:2px;font-weight:normal;'
                       f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
                       f'{detail}</div>') if detail else ""
+        tip = _STAGE_TIPS.get(name, "")
         parts.append(
+            f'<div class="ua-tip">'
             f'<div style="{BOX}{style};display:inline-flex;flex-direction:column;'
             f'align-items:center;justify-content:center;border-radius:7px;'
             f'font-family:monospace;font-size:12px;font-weight:700;'
-            f'padding:4px 6px;text-align:center;flex-shrink:0">'
+            f'padding:4px 6px;text-align:center;cursor:default">'
             f'<div>{"" if not icon else icon + " "}{name}</div>{detail_div}</div>'
+            f'<span class="ua-tiptext">{tip}</span>'
+            f'</div>'
         )
         if i < len(STAGES) - 1:
             parts.append('<span style="padding:0 4px;color:#d1d5db;font-size:18px;'
@@ -70,13 +100,33 @@ _LENS_COLORS = {
 }
 _DEFAULT_LENS_COLOR = ("#f3f4f6", "#374151")
 
+_LENS_TIPS = {
+    "IP_Ownership":       "Who owns the intellectual property? Looks for ownership assignments, work-for-hire clauses, and title transfer language.",
+    "IP_Warranty":        "Does the licensor warrant they have clean title? Flags warranties claiming no third-party IP encumbrances — often contradicted by open-source disclosures.",
+    "License_Compliance": "Are all software licenses being honoured? Surfaces GPL/LGPL obligations, open-source component disclosures, and compliance representations.",
+    "Liability_Cap":      "What is the ceiling on damages? Identifies aggregate liability limits and carve-outs (e.g. IP infringement claims that are often uncapped).",
+    "Indemnification":    "Who covers whom for what losses? Extracts indemnification obligations, exclusions, and the gap between what is indemnified and what is not.",
+    "Change_of_Control":  "What happens in an acquisition? Flags consent requirements, termination triggers, and assignment restrictions that activate on a change of control.",
+    "Data_Privacy":       "What data-processing obligations exist? Identifies GDPR/CCPA compliance warranties, data breach liability, and processor agreements.",
+    "Regulatory_Approval":"Are there regulatory conditions? Surfaces approvals required for the transaction to close or for the product to be sold.",
+}
+_DEFAULT_LENS_TIP = "Domain-specific extraction lens applied to each document chunk."
+
 def _topology_html(file_topologies: dict) -> str:
     if not file_topologies:
         return ""
-    rows = ['<div style="margin-top:10px;padding:12px 16px;background:#f9fafb;'
-            'border-radius:10px;border:1px solid #e5e7eb;font-family:monospace">',
-            '<div style="font-size:11px;font-weight:700;color:#6b7280;'
-            'letter-spacing:0.05em;margin-bottom:8px">DYNAMIC LENS SELECTION</div>']
+    header_tip = ("Each document gets a unique set of lenses chosen by the router based on its content. "
+                  "This is the Dynamic Semantic Topology (DST) feature — the pipeline adapts to each "
+                  "document rather than applying a fixed schema to all files.")
+    rows = [
+        '<div style="margin-top:10px;padding:12px 16px;background:#f9fafb;'
+        'border-radius:10px;border:1px solid #e5e7eb;font-family:monospace">',
+        f'<div class="ua-tip" style="display:inline-block;margin-bottom:8px">'
+        f'<span style="font-size:11px;font-weight:700;color:#6b7280;'
+        f'letter-spacing:0.05em;cursor:default">DYNAMIC LENS SELECTION ⓘ</span>'
+        f'<span class="ua-tiptext" style="width:240px">{header_tip}</span>'
+        f'</div>',
+    ]
     for fname, lenses in file_topologies.items():
         short = fname.replace("_", " ").replace(".txt", "")
         rows.append(f'<div style="margin-bottom:6px">'
@@ -84,9 +134,15 @@ def _topology_html(file_topologies: dict) -> str:
                     f'<br style="line-height:4px">')
         for lens in lenses:
             bg, fg = _LENS_COLORS.get(lens, _DEFAULT_LENS_COLOR)
-            rows.append(f'<span style="display:inline-block;margin:3px 3px 0 0;'
-                        f'padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;'
-                        f'background:{bg};color:{fg}">{lens}</span>')
+            tip = _LENS_TIPS.get(lens, _DEFAULT_LENS_TIP)
+            rows.append(
+                f'<span class="ua-tip" style="display:inline-block;margin:3px 3px 0 0">'
+                f'<span style="display:inline-block;padding:2px 8px;border-radius:12px;'
+                f'font-size:11px;font-weight:600;background:{bg};color:{fg};cursor:default">'
+                f'{lens}</span>'
+                f'<span class="ua-tiptext">{tip}</span>'
+                f'</span>'
+            )
         rows.append('</div>')
     rows.append('</div>')
     return "".join(rows)
@@ -214,7 +270,11 @@ with st.container():
     data_room_path = st.text_input(
         "Data Room Directory",
         value=default_path,
-        help="Path to a directory containing plain-text due diligence documents.",
+        help=(
+            "Path to a directory of plain-text (.txt) due diligence documents. "
+            "The pipeline reads every .txt file here, skipping binary files. "
+            "Run preprocess.py first to convert raw EDGAR .htm filings into .txt."
+        ),
     )
     st.caption(
         "Required environment variables:\n"
@@ -248,6 +308,12 @@ with st.container():
         "Generate Risk Report",
         type="primary",
         disabled=bool(missing_keys),
+        help=(
+            "Runs the full pipeline: crawl → route (Gemini Flash assigns lenses per document) → "
+            "chunk → extract (Claude Haiku workers, one per Chunk × Lens pair) → "
+            "synthesize (Claude Sonnet produces the final cross-referenced report). "
+            "Takes 2–5 minutes depending on document size and API rate limits."
+        ),
     )
 
 # Generation ──────────────────────────────────────────────────────────────────
