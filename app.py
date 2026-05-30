@@ -28,24 +28,29 @@ def _diagram_html(stage_states: dict) -> str:
         "active":   ("background:#dbeafe;color:#1d4ed8;border:1.5px solid #3b82f6;animation:pulse 1.5s ease-in-out infinite", "▶"),
         "complete": ("background:#dcfce7;color:#166534;border:1.5px solid #16a34a", "✓"),
     }
+    # Fixed box dimensions so all bubbles are identical size regardless of detail text
+    BOX = "width:100px;height:56px;box-sizing:border-box;"
     parts = ['<style>@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}</style>',
              '<div style="padding:12px 16px;background:#f9fafb;border-radius:10px;'
-             'border:1px solid #e5e7eb;white-space:nowrap;overflow-x:auto">']
+             'border:1px solid #e5e7eb;white-space:nowrap;overflow-x:auto;'
+             'display:flex;align-items:center;gap:0">']
     for i, name in enumerate(STAGES):
         s = stage_states.get(name, {"status": "idle", "detail": ""})
         style, icon = STYLE[s["status"]]
         detail = s.get("detail", "")
-        detail_div = (f'<div style="font-size:10px;margin-top:3px;font-weight:normal">'
+        detail_div = (f'<div style="font-size:9px;margin-top:2px;font-weight:normal;'
+                      f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
                       f'{detail}</div>') if detail else ""
         parts.append(
-            f'<div style="display:inline-block;{style};padding:7px 12px;border-radius:7px;'
-            f'min-width:85px;text-align:center;font-family:monospace;font-size:12px;'
-            f'font-weight:700;vertical-align:top">'
-            f'{"" if not icon else icon + " "}{name}{detail_div}</div>'
+            f'<div style="{BOX}{style};display:inline-flex;flex-direction:column;'
+            f'align-items:center;justify-content:center;border-radius:7px;'
+            f'font-family:monospace;font-size:12px;font-weight:700;'
+            f'padding:4px 6px;text-align:center;flex-shrink:0">'
+            f'<div>{"" if not icon else icon + " "}{name}</div>{detail_div}</div>'
         )
         if i < len(STAGES) - 1:
-            parts.append('<span style="padding:0 5px;color:#d1d5db;font-size:20px;'
-                         'vertical-align:middle;line-height:52px">→</span>')
+            parts.append('<span style="padding:0 4px;color:#d1d5db;font-size:18px;'
+                         'flex-shrink:0;line-height:1">→</span>')
     parts.append("</div>")
     return "".join(parts)
 
