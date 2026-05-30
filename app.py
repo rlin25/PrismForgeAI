@@ -211,7 +211,7 @@ def _log_html(lines: list) -> str:
                 f'<span class="ua-tip" style="display:block">'
                 f'<span style="cursor:default;display:block">{escaped}</span>'
                 f'<span class="ua-tiptext" style="width:260px;white-space:normal;'
-                f'bottom:auto;top:calc(100% + 4px)">{tip}</span>'
+                f'top:auto;bottom:calc(100% + 4px)">{tip}</span>'
                 f'</span>'
             )
         else:
@@ -308,6 +308,7 @@ st.divider()
 # collapse button stays visible while scrolling through document content.
 st.markdown("""
 <style>
+/* Sticky expander header while scrolling through open document content */
 details[open] > summary {
     position: sticky;
     top: 3.5rem;
@@ -317,6 +318,13 @@ details[open] > summary {
     padding-bottom: 6px;
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
+}
+/* Allow tooltips to escape the pipeline status container */
+div[data-testid="stStatusWidget"],
+div[data-testid="stStatusWidget"] > div,
+div[data-testid="stStatusWidget"] > div > div,
+div[data-testid="stExpander"] > details > div {
+    overflow: visible !important;
 }
 </style>
 """, unsafe_allow_html=True)
