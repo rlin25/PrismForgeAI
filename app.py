@@ -20,61 +20,55 @@ from pipeline import run_graph
 
 # ── Progress formatting ───────────────────────────────────────────────────────
 
+def _parse_worker_event(raw: str):
+    """
+    Returns (event, total) for worker events so the main loop can maintain
+    a single updating summary line rather than appending per-event.
+    Returns None for non-worker messages.
+    """
+    m = re.match(r"\[route_matrix_to_workers\] .+?: dispatching (\d+) workers", raw)
+    if m:
+        return ("dispatch", int(m.group(1)))
+    if re.match(r"\[extraction_worker\] OK ", raw):
+        return ("ok", 0)
+    if "Rate limited" in raw and "retrying" in raw:
+        return ("retry", 0)
+    if re.match(r"\[extraction_worker\] FAILED", raw):
+        return ("failed", 0)
+    return None
+
+
 def _fmt(raw: str) -> str:
-    """Format a pipeline log line for the progress display."""
-    # [directory_crawler] Found 3 readable files: [...]
+    """Format a non-worker pipeline log line. Returns None to suppress."""
     m = re.match(r"\[directory_crawler\] Found (\d+) readable files: (.+)", raw)
     if m:
         return f"  Files found: {m.group(2)}"
 
-    # [dispatch_subgraphs] Dispatching N sub-graphs
     m = re.match(r"\[dispatch_subgraphs\] Dispatching (\d+) sub-graphs", raw)
     if m:
         return f"\nDispatching {m.group(1)} document sub-graphs in parallel...\n"
 
-    # [router_node] file.txt: N lenses: [...]
     m = re.match(r"\[router_node\] (.+?): (\d+) lenses: (.+)", raw)
     if m:
         lenses = m.group(3).strip("[]").replace("'", "")
         return f"  {m.group(1)}\n    Lenses assigned: {lenses}"
 
-    # [chunk_node] file.txt: N chunks
     m = re.match(r"\[chunk_node\] (.+?): (\d+) chunks", raw)
     if m:
         return f"    Chunks: {m.group(2)}"
 
-    # [route_matrix_to_workers] file.txt: dispatching N workers (X chunks x Y lenses)
-    m = re.match(r"\[route_matrix_to_workers\] (.+?): dispatching (\d+) workers \((.+)\)", raw)
-    if m:
-        return f"    Workers dispatched: {m.group(2)}  ({m.group(3)})"
-
-    # [extraction_worker] Rate limited — retrying...
-    if "Rate limited" in raw and "retrying" in raw:
-        return f"    [rate limited — retrying with backoff]"
-
-    # [extraction_worker] FAILED ...
-    if "[extraction_worker] FAILED" in raw:
-        return f"    [worker failed after retries — skipped]"
-
-    # [master_round_table_node] Synthesizing: N records from M files
     m = re.match(r"\[master_round_table_node\] Synthesizing: (\d+) records from (\d+) files", raw)
     if m:
         return f"\nSynthesizing {m.group(1)} extraction records from {m.group(2)} files..."
 
-    # [master_round_table_node] Report: N characters
     m = re.match(r"\[master_round_table_node\] Report: (\d+) characters", raw)
     if m:
         return f"Report generated ({int(m.group(1)):,} characters)"
 
-    # [master_round_table_node] Blind spots: [...]
     if "[master_round_table_node] Blind spots" in raw:
         return f"  Coverage gaps detected: {raw.split(':', 1)[1].strip()}"
 
-    # suppress internal/noisy lines
-    if any(x in raw for x in ["[dispatch_subgraphs] Could not", "Item 1", "Extracting lines"]):
-        return None
-
-    return None   # suppress unrecognised lines
+    return None  # suppress everything else
 
 
 # ── Pipeline runner ───────────────────────────────────────────────────────────
@@ -152,6 +146,54 @@ with col_cfg:
                 log_placeholder = st.empty()
                 lines = []
 
+                # Worker counter state — maintained as a single updating line
+                w_total = 0
+                w_done = 0
+                w_failed = 0
+                w_retrying = 0
+                w_line_idx = None  # index in lines[] of the worker summary line
+
+                def worker_summary():
+                    s = f"    Workers: {w_done}/{w_total} complete"
+                    if w_retrying:
+                        s += f"  |  {w_retrying} retrying..."
+                    if w_failed:
+                        s += f"  |  {w_failed} failed"
+                    return s
+
+                def process_msg(raw):
+                    nonlocal w_total, w_done, w_failed, w_retrying, w_line_idx
+                    evt = _parse_worker_event(raw)
+                    if evt:
+                        kind, count = evt
+                        if kind == "dispatch":
+                            w_total += count
+                            if w_line_idx is None:
+                                lines.append(worker_summary())
+                                w_line_idx = len(lines) - 1
+                            else:
+                                lines[w_line_idx] = worker_summary()
+                        elif kind == "ok":
+                            w_done += 1
+                            if w_line_idx is not None:
+                                lines[w_line_idx] = worker_summary()
+                        elif kind == "retry":
+                            w_retrying += 1
+                            if w_line_idx is not None:
+                                lines[w_line_idx] = worker_summary()
+                        elif kind == "failed":
+                            w_failed += 1
+                            w_retrying = max(0, w_retrying - 1)
+                            if w_line_idx is not None:
+                                lines[w_line_idx] = worker_summary()
+                        return True
+                    else:
+                        fmt = _fmt(raw)
+                        if fmt is not None:
+                            lines.append(fmt)
+                            return True
+                    return False
+
                 try:
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
                         future = ex.submit(_run_pipeline, data_room_path, progress_q)
@@ -161,25 +203,18 @@ with col_cfg:
                             for _ in range(50):
                                 try:
                                     raw = progress_q.get_nowait()
-                                    fmt = _fmt(raw)
-                                    if fmt is not None:
-                                        lines.append(fmt)
+                                    if process_msg(raw):
                                         changed = True
                                 except queue.Empty:
                                     break
                             if changed:
-                                log_placeholder.code(
-                                    "\n".join(lines), language=None
-                                )
+                                log_placeholder.code("\n".join(lines), language=None)
                             time.sleep(0.15)
 
                         # drain remaining messages
                         while True:
                             try:
-                                raw = progress_q.get_nowait()
-                                fmt = _fmt(raw)
-                                if fmt is not None:
-                                    lines.append(fmt)
+                                process_msg(progress_q.get_nowait())
                             except queue.Empty:
                                 break
                         log_placeholder.code("\n".join(lines), language=None)

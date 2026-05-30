@@ -308,6 +308,7 @@ async def extraction_worker(payload_dict: Dict[str, Any]) -> Dict[str, Any]:
             chunk_index=payload.chunk_index,
             payload=result,
         )
+        _log(f"[extraction_worker] OK {payload.lens_name}/{payload.source_file}/{payload.chunk_index}")
         return {"local_inbox": [record]}
     except Exception as e:
         label = (
