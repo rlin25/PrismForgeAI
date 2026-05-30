@@ -50,6 +50,43 @@ def _diagram_html(stage_states: dict) -> str:
     return "".join(parts)
 
 
+# ── Topology HTML (per-document lens assignments) ────────────────────────────
+
+# Lens category → chip color
+_LENS_COLORS = {
+    "IP_Ownership":    ("#dbeafe", "#1d4ed8"),
+    "IP_Warranty":     ("#dbeafe", "#1d4ed8"),
+    "License_Compliance": ("#dcfce7", "#166534"),
+    "Liability_Cap":   ("#fef3c7", "#92400e"),
+    "Indemnification": ("#f3e8ff", "#6b21a8"),
+    "Change_of_Control": ("#ffe4e6", "#9f1239"),
+    "Data_Privacy":    ("#e0f2fe", "#0369a1"),
+    "Regulatory_Approval": ("#f0fdf4", "#15803d"),
+}
+_DEFAULT_LENS_COLOR = ("#f3f4f6", "#374151")
+
+def _topology_html(file_topologies: dict) -> str:
+    if not file_topologies:
+        return ""
+    rows = ['<div style="margin-top:10px;padding:12px 16px;background:#f9fafb;'
+            'border-radius:10px;border:1px solid #e5e7eb;font-family:monospace">',
+            '<div style="font-size:11px;font-weight:700;color:#6b7280;'
+            'letter-spacing:0.05em;margin-bottom:8px">DYNAMIC LENS SELECTION</div>']
+    for fname, lenses in file_topologies.items():
+        short = fname.replace("_", " ").replace(".txt", "")
+        rows.append(f'<div style="margin-bottom:6px">'
+                    f'<span style="font-size:11px;color:#374151;font-weight:600">{short}</span>'
+                    f'<br style="line-height:4px">')
+        for lens in lenses:
+            bg, fg = _LENS_COLORS.get(lens, _DEFAULT_LENS_COLOR)
+            rows.append(f'<span style="display:inline-block;margin:3px 3px 0 0;'
+                        f'padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;'
+                        f'background:{bg};color:{fg}">{lens}</span>')
+        rows.append('</div>')
+    rows.append('</div>')
+    return "".join(rows)
+
+
 # ── Progress parsing ──────────────────────────────────────────────────────────
 
 def _parse_worker_event(raw: str):
@@ -74,8 +111,7 @@ def _fmt(raw: str):
         return f"\nDispatching {m.group(1)} document sub-graphs in parallel...\n"
     m = re.match(r"\[router_node\] (.+?): (\d+) lenses: (.+)", raw)
     if m:
-        lenses = m.group(3).strip("[]").replace("'", "")
-        return f"  {m.group(1)}\n    Lenses assigned: {lenses}"
+        return None  # handled by topology widget; suppress from text log
     m = re.match(r"\[chunk_node\] (.+?): (\d+) chunks", raw)
     if m:
         return f"    Chunks: {m.group(2)}"
@@ -188,6 +224,9 @@ if run_button:
         stage_states = {s: {"status": "idle", "detail": ""} for s in STAGES}
         stage_states["CRAWL"] = {"status": "active", "detail": ""}
 
+        # Per-document lens assignments (populated as routing completes)
+        file_topologies = {}
+
         # Log lines
         lines = []
 
@@ -201,6 +240,15 @@ if run_button:
             return s
 
         def process_msg(raw):
+            nonlocal_flag = [False]  # use list to avoid nonlocal in nested scope
+            # Capture router output for topology widget
+            m = re.match(r"\[router_node\] (.+?): \d+ lenses: (.+)", raw)
+            if m:
+                fname = m.group(1)
+                lenses = [l.strip().strip("'") for l in m.group(2).strip("[]").split(",")]
+                file_topologies[fname] = lenses
+                topology_ph.markdown(_topology_html(file_topologies), unsafe_allow_html=True)
+
             diag_changed = _update_stages(raw, stage_states)
             evt = _parse_worker_event(raw)
             log_changed = False
@@ -241,6 +289,7 @@ if run_button:
         with st.status("Running pipeline...", expanded=True) as status:
             st.markdown("**Pipeline**")
             diagram_ph = st.empty()
+            topology_ph = st.empty()
             st.markdown("**Progress log**")
             log_ph = st.empty()
 
