@@ -206,6 +206,25 @@ with col_cfg:
     if missing_keys:
         st.warning(f"Missing: {', '.join(missing_keys)}")
 
+    # Document preview
+    _preview_dir = Path(data_room_path)
+    if _preview_dir.exists() and _preview_dir.is_dir():
+        _docs = sorted(_preview_dir.glob("*.txt"))
+        if _docs:
+            st.divider()
+            st.caption(f"**Data room** — {len(_docs)} document(s)")
+            for _doc in _docs:
+                with st.expander(_doc.name):
+                    try:
+                        _text = _doc.read_text(encoding="utf-8", errors="replace")
+                        st.text(_text[:1500] + ("\n\n[... truncated ...]" if len(_text) > 1500 else ""))
+                        st.caption(f"{len(_text):,} characters total")
+                    except Exception:
+                        st.error("Could not read file.")
+        else:
+            st.caption("No .txt files found in data room directory.")
+
+    st.divider()
     run_button = st.button(
         "Generate Risk Report",
         type="primary",
