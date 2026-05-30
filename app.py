@@ -186,6 +186,23 @@ st.title("PrismForge AI v4")
 st.caption("Dynamic Semantic Topology Engine — Corporate Due Diligence Risk Analysis")
 st.divider()
 
+# Sticky expander header — activates only when details is open so the
+# collapse button stays visible while scrolling through document content.
+st.markdown("""
+<style>
+details[open] > summary {
+    position: sticky;
+    top: 3.5rem;
+    z-index: 999;
+    background-color: var(--background-color, #ffffff);
+    border-bottom: 1px solid var(--secondary-background-color, #e6e6e6);
+    padding-bottom: 6px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+</style>
+""", unsafe_allow_html=True)
+
 with st.container():
     st.subheader("Configuration")
     default_path = str(Path(__file__).parent / "data_room")
