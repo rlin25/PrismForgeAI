@@ -146,46 +146,41 @@ with col_cfg:
                 log_placeholder = st.empty()
                 lines = []
 
-                # Worker counter state — maintained as a single updating line
-                w_total = 0
-                w_done = 0
-                w_failed = 0
-                w_retrying = 0
-                w_line_idx = None  # index in lines[] of the worker summary line
+                # Worker counter state — mutable dict so nested function can update it
+                w = {"total": 0, "done": 0, "failed": 0, "retrying": 0, "line_idx": None}
 
                 def worker_summary():
-                    s = f"    Workers: {w_done}/{w_total} complete"
-                    if w_retrying:
-                        s += f"  |  {w_retrying} retrying..."
-                    if w_failed:
-                        s += f"  |  {w_failed} failed"
+                    s = f"    Workers: {w['done']}/{w['total']} complete"
+                    if w["retrying"]:
+                        s += f"  |  {w['retrying']} retrying..."
+                    if w["failed"]:
+                        s += f"  |  {w['failed']} failed"
                     return s
 
                 def process_msg(raw):
-                    nonlocal w_total, w_done, w_failed, w_retrying, w_line_idx
                     evt = _parse_worker_event(raw)
                     if evt:
                         kind, count = evt
                         if kind == "dispatch":
-                            w_total += count
-                            if w_line_idx is None:
+                            w["total"] += count
+                            if w["line_idx"] is None:
                                 lines.append(worker_summary())
-                                w_line_idx = len(lines) - 1
+                                w["line_idx"] = len(lines) - 1
                             else:
-                                lines[w_line_idx] = worker_summary()
+                                lines[w["line_idx"]] = worker_summary()
                         elif kind == "ok":
-                            w_done += 1
-                            if w_line_idx is not None:
-                                lines[w_line_idx] = worker_summary()
+                            w["done"] += 1
+                            if w["line_idx"] is not None:
+                                lines[w["line_idx"]] = worker_summary()
                         elif kind == "retry":
-                            w_retrying += 1
-                            if w_line_idx is not None:
-                                lines[w_line_idx] = worker_summary()
+                            w["retrying"] += 1
+                            if w["line_idx"] is not None:
+                                lines[w["line_idx"]] = worker_summary()
                         elif kind == "failed":
-                            w_failed += 1
-                            w_retrying = max(0, w_retrying - 1)
-                            if w_line_idx is not None:
-                                lines[w_line_idx] = worker_summary()
+                            w["failed"] += 1
+                            w["retrying"] = max(0, w["retrying"] - 1)
+                            if w["line_idx"] is not None:
+                                lines[w["line_idx"]] = worker_summary()
                         return True
                     else:
                         fmt = _fmt(raw)
