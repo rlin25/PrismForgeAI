@@ -12,6 +12,8 @@ import re
 import time
 from pathlib import Path
 
+import streamlit.components.v1 as components
+
 import streamlit as st
 
 import pipeline as _pipeline
@@ -300,6 +302,54 @@ st.set_page_config(
     layout="wide",
 )
 
+# JS tooltip: position:fixed follows mouse — escapes all overflow constraints.
+# Runs in an iframe (st.components.v1.html) and attaches to window.parent.document.
+components.html("""
+<script>
+(function(){
+  if(window.parent._ua_tt_init) return;
+  window.parent._ua_tt_init = true;
+  var doc = window.parent.document;
+  var tt = doc.createElement('div');
+  tt.style.cssText = [
+    'position:fixed','background:#1f2937','color:#f9fafb',
+    'font-size:11px','font-family:sans-serif','line-height:1.5',
+    'padding:8px 11px','border-radius:7px','max-width:260px',
+    'white-space:normal','z-index:99999','pointer-events:none',
+    'box-shadow:0 4px 14px rgba(0,0,0,.3)','display:none',
+    'transition:opacity .12s'
+  ].join(';');
+  doc.body.appendChild(tt);
+
+  function pos(e){
+    var x=e.clientX+14, y=e.clientY-10;
+    var w=tt.offsetWidth, h=tt.offsetHeight;
+    var vw=window.parent.innerWidth, vh=window.parent.innerHeight;
+    tt.style.left=(x+w>vw ? e.clientX-w-14 : x)+'px';
+    tt.style.top =(y+h>vh ? e.clientY-h-10 : y)+'px';
+  }
+  doc.addEventListener('mouseover',function(e){
+    var el=e.target.closest('.ua-tip');
+    if(el){
+      var tip=el.querySelector('.ua-tiptext');
+      if(tip && tip.textContent.trim()){
+        tt.textContent=tip.textContent.trim();
+        tt.style.display='block';
+        pos(e);
+      }
+    }
+  });
+  doc.addEventListener('mousemove',function(e){
+    if(tt.style.display!=='none') pos(e);
+  });
+  doc.addEventListener('mouseout',function(e){
+    var el=e.target.closest('.ua-tip');
+    if(el && !el.contains(e.relatedTarget)) tt.style.display='none';
+  });
+})();
+</script>
+""", height=0)
+
 st.title("PrismForge AI v4")
 st.caption("Dynamic Semantic Topology Engine — Corporate Due Diligence Risk Analysis")
 st.divider()
@@ -319,13 +369,8 @@ details[open] > summary {
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
 }
-/* Allow tooltips to escape the pipeline status container */
-div[data-testid="stStatusWidget"],
-div[data-testid="stStatusWidget"] > div,
-div[data-testid="stStatusWidget"] > div > div,
-div[data-testid="stExpander"] > details > div {
-    overflow: visible !important;
-}
+/* Hide CSS tooltip spans — JS fixed-position tooltip handles display */
+.ua-tiptext { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
