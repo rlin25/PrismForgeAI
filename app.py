@@ -388,7 +388,7 @@ with st.container():
     )
     st.caption(
         "Required environment variables:\n"
-        "- `ANTHROPIC_API_KEY` (Claude Sonnet — extraction + synthesis)\n"
+        "- `ANTHROPIC_API_KEY` (Claude Haiku — extraction · Claude Sonnet — synthesis)\n"
         "- `GOOGLE_API_KEY` (Gemini Flash — document routing)"
     )
     missing_keys = [k for k in ("ANTHROPIC_API_KEY", "GOOGLE_API_KEY") if not os.environ.get(k)]
@@ -422,7 +422,7 @@ with st.container():
             "Runs the full pipeline: crawl → route (Gemini Flash assigns lenses per document) → "
             "chunk → extract (Claude Haiku workers, one per Chunk × Lens pair) → "
             "synthesize (Claude Sonnet produces the final cross-referenced report). "
-            "Takes 2–5 minutes depending on document size and API rate limits."
+            "Takes 1–3 minutes for the current two-document data room."
         ),
     )
 

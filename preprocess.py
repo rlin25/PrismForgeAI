@@ -177,16 +177,15 @@ def extract_hp_agreement(text: str) -> str:
         return text[:20000]
 
     result = "\n".join(output)
-    # Cap to keep worker count within API rate limits (~5 chunks × 5 lenses = 25 workers)
-    if len(result) > 20000:
-        result = result[:20000] + "\n[... truncated to fit API rate limits ...]"
+    if len(result) > 10000:
+        result = result[:10000] + "\n[... truncated to fit API rate limits ...]"
     return result
 
 
 def extract_dot_hill_10k(text: str) -> str:
     """Extract Item 1 (Business) and Item 1A (Risk Factors), stop before Item 7."""
     lines = text.splitlines()
-    MAX_CHARS = 20000
+    MAX_CHARS = 10000
 
     def norm(s):
         return s.replace("\xa0", " ").strip()
