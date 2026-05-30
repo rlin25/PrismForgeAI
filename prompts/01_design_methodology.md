@@ -7,7 +7,7 @@
 
 # Claude Interaction Workflow — Behavioral Instructions and Methods
 
-**Status:** PrismForge AI v4 — design complete (Phases 1–5 done), implementation in progress (Phase 6), documentation phase pending.
+**Status:** PrismForge AI v4 — Phase 7 complete. Post-Phase 7 improvements applied: animated pipeline diagram and dynamic lens topology widget in app.py UI, extraction_worker rate-limit retry backoff (Decision 3.24), real EDGAR documents in data_room/, preprocess.py MAX_CHARS capped at 20k for Tier 1 compatibility, Python 3.9 type hint fix in preprocess.py. Design documents updated to v14.
 **Purpose:** A reusable reference for how to work with Claude effectively across projects. Documents every behavioral instruction, metacognitive method, and workflow decision. Apply this to every new project from the start.
 
 ---

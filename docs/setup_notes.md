@@ -79,6 +79,16 @@ streamlit run app.py
 
 The app will be available at `http://localhost:8501`.
 
+The UI includes:
+- An animated 6-stage pipeline diagram (CRAWL → ROUTE → CHUNK → EXTRACT → SYNTHESIZE → REPORT)
+  with CSS pulse animation; stages turn green as they complete during a run.
+- A dynamic lens selection topology widget: colored chips appear per document as routing
+  completes, showing which lenses were assigned to each file.
+- A worker counter showing live progress ("Workers: 23/50 complete | 2 retrying...").
+- Document preview expanders in the config panel showing the first 1,500 characters of each
+  `.txt` file in the data room, with total character count.
+- The report section renders only after generation is complete — no placeholder shown beforehand.
+
 `beautifulsoup4` is listed in `requirements.txt` and will be installed by the
 `pip install` step above. `preprocess.py` also includes a fallback self-installer
 for environments where it is missing.
@@ -118,7 +128,10 @@ path is `./data_room` relative to the project root, but any absolute or relative
 path can be entered in the Streamlit UI.
 
 The `data_room/` directory is populated by running `preprocess.py`, which reads raw
-EDGAR `.htm` filings from `source_docs/` and writes clean `.txt` extracts:
+EDGAR `.htm` filings from `source_docs/` and writes clean `.txt` extracts. The
+original synthetic fixture files (`file_a.txt`, `file_b.txt`, `file_c.txt`) have been
+replaced with real EDGAR documents:
+
 - `dot_hill_10k_2006.txt` — extracted from the Dot Hill Systems FY2006 10-K
   (Item 1 Business + Item 1A Risk Factors)
 - `hp_product_purchase_agreement.txt` — extracted from the HP Product Purchase
@@ -245,6 +258,63 @@ but `nest_asyncio.apply()` is no longer called.
 
 ---
 
+### 6.6 Anthropic Tier 1 rate limits cause silent worker failures
+
+**Symptom:** The final report has sparse findings — most files have few or no extraction
+records despite the pipeline completing without errors.
+
+**Cause:** Anthropic Tier 1 accounts are capped at 50 requests per minute. When 50+
+extraction workers fire simultaneously, the majority receive 429 RESOURCE_EXHAUSTED errors.
+Each worker's bare `try/except` catches the error and returns `{"local_inbox": []}`,
+silently omitting those chunk × lens combinations from the report.
+
+**Fix (implemented in `pipeline.py`):** `extraction_worker` retries up to 3 attempts on
+rate-limit errors (detected by "429" or "rate_limit" in the error string), waiting 15
+seconds after the first failure and 30 seconds after the second before giving up permanently.
+
+**Status:** Resolved via Decision 3.24. See also §6.7 for the `MAX_CHARS` cap that limits
+total worker count to stay within Tier 1 quota.
+
+---
+
+### 6.7 Document extraction capped at 20k characters per file (Tier 1 rate limits)
+
+**Symptom:** Extraction output covers only a portion of long documents; later sections
+are not analyzed.
+
+**Cause:** `preprocess.py` caps extraction at `MAX_CHARS = 20_000` characters per file.
+This limit was deliberately reduced from 90k to keep total worker count within Anthropic
+Tier 1 rate limits (~50 RPM). A 90k-character document would produce ~22 chunks at
+`chunk_size=4000`; with 5 lenses assigned, that is ~110 workers per file — already over
+the Tier 1 ceiling for a single file.
+
+**Fix:** Increase `MAX_CHARS` in `preprocess.py` and upgrade the Anthropic account to
+Tier 2 or higher. Tier 2 raises the RPM ceiling enough to handle 90k-character documents
+with typical lens assignments.
+
+**Status:** Known limitation. Tier 1 constraint is documented in `preprocess.py`.
+
+---
+
+### 6.8 Python 3.9 incompatibility: `Path | None` union type hint
+
+**Symptom:** `SyntaxError` when running `preprocess.py` on EC2 or any Python 3.9
+environment:
+
+```
+SyntaxError: unsupported operand type(s) for |: 'type' and 'NoneType'
+```
+
+**Cause:** The `Path | None` union syntax for type hints requires Python 3.10+. EC2
+Amazon Linux 2 and some other deployment targets ship with Python 3.9 by default.
+
+**Fix (applied in `preprocess.py`):** The `Path | None` type annotation was removed from
+the function signature. The function behavior is unchanged; only the type hint is absent.
+
+**Status:** Resolved.
+
+---
+
 ### 6.5 `nest_asyncio` insufficient for LangGraph concurrent Send dispatch
 
 **Symptom:**
@@ -336,5 +406,5 @@ docker run \
 
 ---
 
-*Document version: 1.0 — created post Phase 7 feedback loop*
+*Document version: 1.1 — updated post-Phase 7 UI improvements and Tier 1 rate-limit fixes*
 *Reflects actual deployment state as of implementation completion*

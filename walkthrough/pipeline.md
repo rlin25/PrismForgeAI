@@ -101,6 +101,56 @@ No module-level `asyncio.Semaphore` exists (Invariant S2). A semaphore at module
 `RuntimeError: got Future attached to a different loop` when LangGraph initializes its own event
 loop. Concurrency is controlled at graph invocation time via `max_concurrency=50` (Invariant I1).
 
+### 4.2a Progress Logging Hook (`_log_fn`)
+
+```python
+_log_fn: Callable[[str], None] = print
+
+def _log(msg: str) -> None:
+    _log_fn(msg)
+```
+
+All nodes and workers call `_log(...)` instead of `print(...)`. `_log_fn` is a module-level
+callable that defaults to `print`. `app.py` replaces it before the pipeline runs:
+
+```python
+def _run_pipeline(directory_path: str, progress_q) -> str:
+    _pipeline._log_fn = progress_q.put_nowait
+    try:
+        ...
+    finally:
+        _pipeline._log_fn = print
+```
+
+**Why a module-level callable instead of the `logging` module:**
+
+The `logging` module would require configuring a `Handler` that enqueues to a
+`queue.SimpleQueue`, managing handler lifetimes, choosing log levels, and restoring the
+handler after the run. For a single point of output redirection, a bare function reference
+is simpler: one assignment swaps the target, the `finally` block restores it.
+
+`app.py` assigns `progress_q.put_nowait` — a bound method of `queue.SimpleQueue` — directly
+to `_log_fn`. `put_nowait` has the signature `(item: object) -> None`, which matches the
+`Callable[[str], None]` type. No wrapper is needed.
+
+**Why this does not violate Invariant S1:**
+
+Invariant S1 prohibits LLM singletons from being instantiated inside nodes or workers. `_log_fn`
+is not an LLM singleton and is not instantiated per-call — it is a reference to an already-live
+callable. Replacing it is a single pointer assignment, not an API client initialization.
+The pipeline does not call `_log_fn` during module load; all `_log()` calls are inside node
+bodies or worker bodies, after the assignment in `_run_pipeline` is complete.
+
+**Why `queue.SimpleQueue` (not `queue.Queue`):**
+
+`SimpleQueue` has no `maxsize` parameter and no `task_done`/`join` protocol. A `SimpleQueue`
+`put_nowait` never blocks. The progress drain loop in `app.py` calls `get_nowait` in batches
+of 50 with a `queue.Empty` break, so it is safe for the producer (pipeline thread) to emit
+faster than the consumer (Streamlit main thread) polls. A `Queue` with a bounded `maxsize`
+would block the pipeline thread if the UI thread fell behind.
+
+---
+
 ### 4.3 Chunker Singleton (Invariant C1)
 
 ```python
@@ -347,6 +397,69 @@ in `ParentState` has type `List[ExtractionRecord]`. Inserting raw dicts would br
 `.model_dump()` call in `master_round_table_node` and the `source_file` attribute access in
 `detect_blind_spots`.
 
+#### Decision 3.24 — Retry Backoff for 429 Rate-Limit Errors
+
+Inside the outer `try/except` (Invariant X4), the `ainvoke` call is wrapped in a 3-attempt
+retry loop:
+
+```python
+result = None
+for attempt in range(3):
+    try:
+        result = await structured_llm.ainvoke(messages)
+        break
+    except Exception as e:
+        err = str(e)
+        is_rate_limit = "429" in err or "rate_limit" in err.lower() or "rate limit" in err.lower()
+        if is_rate_limit and attempt < 2:
+            wait = 15 * (2 ** attempt)  # 15s first, 30s second
+            _log(f"[extraction_worker] Rate limited — retrying in {wait}s (...)")
+            await asyncio.sleep(wait)
+        else:
+            raise
+```
+
+**The 3-attempt loop structure:**
+
+`range(3)` gives attempts 0, 1, 2. On attempt 0 a 429 triggers a 15-second wait (15 × 2^0).
+On attempt 1 a 429 triggers a 30-second wait (15 × 2^1). On attempt 2 any exception re-raises
+immediately (`attempt < 2` is False), falling through to the outer `except` block which logs
+`FAILED` and returns `{"local_inbox": []}`. The `break` on success means a first-attempt
+success exits the loop without entering the except branch.
+
+**Why only 429/rate_limit triggers retry:**
+
+Non-rate-limit errors (Pydantic `ValidationError`, malformed LLM response, network timeout,
+authentication failure) are not transient — retrying them after 15 seconds will not produce
+a different result. Retrying on every exception type would add 45 seconds of delay to every
+genuinely broken worker. Invariant X4 requires all failures to eventually return
+`{"local_inbox": []}`, and the fast-fail path (re-raise on non-rate-limit errors) satisfies
+that invariant without artificial delay.
+
+The detection condition checks for `"429"` (the HTTP status code in the exception string),
+`"rate_limit"` (Anthropic SDK error code), and `"rate limit"` with a space (some SDK versions
+use the spaced form). Case-insensitive `.lower()` is applied to the rate-limit string checks
+to handle capitalization variation across SDK versions.
+
+**Why 15s and 30s wait times:**
+
+Anthropic Tier 1 accounts have a 50 RPM limit. When all workers fire simultaneously across
+50 parallel LangGraph tasks, the burst saturates the RPM window within the first few seconds.
+The 60-second RPM window resets on a rolling basis. A 15-second wait gives the window
+approximately 12-15 seconds to drain (requests from other workers completing in that period
+reduce the active RPM count), making a successful retry likely without waiting for a full
+60-second reset. The second retry at 30 seconds gives additional headroom for cases where
+the window is still crowded at 15 seconds.
+
+**Why not a module-level `asyncio.Semaphore`:**
+
+A module-level semaphore would proactively throttle workers before they hit rate limits
+(pre-emptive throttling vs. reactive backoff). However, a semaphore declared at module scope
+raises `RuntimeError: got Future attached to a different loop` when LangGraph initializes its
+own event loop on the thread created by `app.py`'s `ThreadPoolExecutor`. This is Invariant S2:
+no module-level asyncio primitives. Reactive retry backoff achieves the same rate-limit
+compliance without requiring asyncio primitives at module scope (Decision 3.24).
+
 ---
 
 ### 4.11 `directory_crawler` Node
@@ -518,10 +631,21 @@ is in `app.py`, not here (Invariant I2, Decision 3.23).
 
 ## 6. v5 Touch Points
 
+The following items from the original v5 list have been implemented and are no longer pending:
+
+- **Progress logging hook:** The `_log_fn` / `_log()` mechanism (§4.2a) replaced all
+  `print()` calls and enables live UI streaming. Implemented.
+- **Retry backoff for rate limits:** Decision 3.24 (§4.10) handles 429 errors with
+  exponential backoff. Implemented.
+
+Remaining v5 items:
+
 - **Streaming synthesis:** `master_round_table_node` calls `llm.ainvoke` and collects the
   full response. v5 would switch to `llm.astream` and yield tokens back through `run_graph`
   to `app.py` for incremental Streamlit rendering. This requires changing `run_graph`'s return
-  type from `str` to an async generator and changing how `app.py` consumes it.
+  type from `str` to an async generator and changing how `app.py` consumes it. Note: the
+  `_log_fn` hook already provides pipeline-stage progress; this item concerns token-by-token
+  report streaming, which is a separate concern.
 - **Module decomposition:** When test coverage warrants it: `src/schemas.py` for Pydantic
   models, `src/nodes.py` for node functions, `src/graph.py` for graph construction and
   `run_graph`, `src/prompts.py` for the three system prompt constants. `app.py` imports only

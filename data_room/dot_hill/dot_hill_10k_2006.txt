@@ -1,0 +1,453 @@
+SOURCE DOCUMENT: dot_hill_systems_10-k.html
+FILING TYPE: dot_hill_10k
+EXTRACTED SECTIONS: 20,523 characters
+============================================================
+
+Item 1.
+Business
+We are a provider of storage systems for organizations requiring
+high reliability, high performance networked storage and data
+management solutions in an open systems architecture. Our
+storage solutions consist of integrated hardware and software
+products employing a modular system that allows end-users to add
+capacity as needed. Our broad range of products, from medium
+capacity stand-alone storage units to complete multi-terabyte
+storage area networks, provides end-users with a cost-effective
+means of addressing increasing storage demands without
+sacrificing performance. Our new product family based on our
+R/Evolution architecture provides high performance and large
+capacities for a broad variety of environments. Our
+SANnet
+�
+products have been distinguished by certification as Network
+Equipment Building System, or NEBS, Level 3 (a
+telecommunications standard for equipment used in central
+offices) and are MIL-STD-810F (a military standard created by
+the U.S. government) compliant based on their ruggedness
+and reliability.
+Our products and services are sold worldwide to end-users
+primarily through our channel partners, including original
+equipment manufacturers, or OEMs, systems integrators, or SIs,
+and value added resellers, or VARs. In May 2002, we entered into
+a three-year OEM agreement with Sun Microsystems, or Sun, to
+provide our storage hardware and software products for private
+label sales by Sun, which was subsequently extended until
+January 2011. The OEM agreement now provides for automatic
+renewals for additional one-year periods, unless either party
+notifies the other of its intent not to renew within a specified
+time period. We have been shipping our products to Sun for
+resale to Sun�s customers since October 2002 and continue
+to do so, having shipped over 122,000 units to date.
+In February 2004, we acquired all the outstanding shares of
+Chaparral Network Storage, Inc., or Chaparral, a privately held
+storage system provider. This acquisition provided us with a
+core of redundant array of independent disks, or RAID, hardware
+and software technology and a team of hardware and software
+professionals located in Longmont, Colorado.
+In July 2005, we entered into a Development and OEM Supply
+Agreement with Network Appliance, Inc. and Network Appliance
+B.V., collectively, NetApp. Under the agreement, we are
+designing and developing general purpose disk arrays for a
+variety of products to be sold under private label by NetApp.
+The agreement does not contain any minimum purchase commitments
+by NetApp. The initial term of the agreement is three years
+after first general availability customer shipment and renews
+automatically for a subsequent 12 months unless terminated
+by either party. We expect to begin shipping products under this
+agreement over the next several quarters.
+2
+Table of Contents
+In January 2006, we entered into a Master Purchase Agreement
+with Fujitsu Siemens Computers GmbH and Fujitsu Siemens
+Computers (Holding) B.V., collectively, Fujitsu. Under the
+agreement, Dot Hill and Fujitsu are jointly developing storage
+solutions utilizing key components and patented technologies
+from Dot Hill. The agreement does not contain any minimum
+purchase commitments by Fujitsu. The initial agreement term is
+five years. We began shipping products under this agreement in
+July 2006.
+As part of our focus on indirect sales channels, we have
+historically outsourced substantially all of our manufacturing
+operations to Solectron Corporation, or Solectron. Our agreement
+with Solectron allows us to reduce sales cycle times and our
+manufacturing infrastructure, enhance working capital and
+improve margins by taking advantage of Solectron�s
+manufacturing and procurement economies of scale.
+In February 2007, we entered into a manufacturing agreement with
+MiTAC International Corporation, or MiTAC a leading provider of
+contract manufacturing and original design manufacturing
+services, and SYNNEX Corporation, or SYNNEX, a leading global IT
+supply chain services company. Under the terms of the agreement,
+MiTAC will supply Dot Hill with manufacturing, assembly and test
+services from its facilities in China, and SYNNEX will provide
+Dot Hill with final assembly, testing and
+configure-to-order
+services through its facilities in Fremont, California and
+Telford, United Kingdom. We believe that the agreement with
+MiTAC and SYNNEX will facilitate our strategic product
+initiatives, help to expand our global capabilities and reduce
+our manufacturing costs. We expect to begin shipping products
+under the MiTAC and SYNNEX agreement over the next several
+quarters.
+We were formed in 1999 by the combination of Box Hill
+Systems Corp., or Box Hill, and Artecon, Inc., or Artecon.
+We reincorporated in Delaware in 2001. Our website address is
+http://www.dothill.com. Information contained on our website
+does not constitute a part of this Annual Report on
+Form 10-K.
+Our Annual Reports on
+Form 10-K,
+our Quarterly Reports on
+Form 10-Q,
+our Current Reports on
+Form 8-K
+and all amendments to those reports that we file with the SEC
+are currently available free of charge to the general public
+through our website. These reports are accessible on our website
+promptly after being filed with the SEC and are also accessible
+through the SEC�s website which may be found at http:
+//www.sec.gov. In addition, you may read and copy the materials
+we file with the SEC at the SEC�s Public Reference Room at
+100 F Street, N.E., Washington, DC 20549. You may obtain
+information on the operation of the Public Reference Room by
+calling the SEC at
+1-800-SEC-0330.
+Industry
+Background
+Growth
+of Data Storage
+The efficient generation, storage and retrieval of digital data
+and content has become increasingly strategic and
+mission-critical to organizations. The volume of this data
+continues to grow rapidly, driven by several factors including:
+�
+the proliferation of different types of data and data forms such
+as digital graphics, video, text and audio;
+�
+the emergence of Internet-based communication protocols which
+enable users to rapidly duplicate, change and re-communicate
+data;
+�
+new regulations and corporate policies requiring additional
+storage, such as compliance with the Sarbanes-Oxley Act of 2002,
+requirements imposed on healthcare companies and evolving
+regulatory requirements for financial services companies;
+�
+the implementation of enterprise-wide databases containing
+business management information;
+�
+gains in network bandwidth and the technology for managing and
+classifying large volumes of data; and
+�
+the development of the information lifecycle management, or ILM,
+and the growing use of RAID systems in the
+back-up
+market in place of, or in addition to, automated tape libraries,
+due to new applications of technologies that offer improved
+alternatives in the trade-off between performance and cost of
+ownership.
+According to International Data Corporation, or IDC, the total
+storage capacity of all worldwide external, disk storage systems
+shipped will grow by nearly 56% on a compounded annual basis
+between 2005 and 2010, reaching 11.9 million terabytes, or
+TB, in 2010.
+3
+Table of Contents
+Traditionally, storage vendors have designed products for
+markets differentiated by capacity, performance, price and
+feature set. These storage markets are typically identified as:
+�
+Entry-level.
+Entry-level storage
+products are designed for relatively low capacity, simple,
+stand-alone data storage needs for which price and simplicity
+are the main purchasing considerations. OEMs and server
+companies address this market primarily through an indirect
+sales channel approach employing distributors, retailers and
+VARs that assist information technology, or IT, managers in
+identifying, purchasing and installing the product.
+�
+Midrange.
+Midrange or
+departmental/workgroup storage products are designed for higher
+capacity and performance than entry-level products, but still
+feature ease of use and manageability, and are attached to a
+local server or a network of servers tailored to the needs of
+the local users. In this market, storage providers, OEMs and
+server companies primarily sell their products to local IT
+managers either direct or through distributors, VARs and
+regional SIs.
+�
+High-end.
+High-end or data center
+storage products are designed for use by larger organizations
+where data storage and management is critical. These
+organizations require large capacity storage systems that
+feature high performance, automation, extreme reliability,
+continuous availability, operating systems interoperability and
+global service and support. In this market, storage providers,
+OEMs and server companies sell their products with a combination
+of a direct sales force and indirect channels, including OEMs,
+large SIs, VARs and managed services providers.
+In addition to dramatic increases in the overall volume of data,
+the storage market has been influenced by the following major
+trends:
+Migration to Network Computing.
+Computing
+processes and architectures have evolved from mainframe
+computing systems toward a centrally managed network computing
+environment characterized by multiple operating systems and
+server platforms that must share information both locally and
+remotely. Organizations require large-scale data storage
+solutions offering:
+�
+increased connectivity capabilities;
+�
+greater capacity;
+�
+higher performance;
+�
+the ability to share data among different platforms;
+�
+greater reliability; and
+�
+greater protection.
+Organizations have responded by implementing tailored networks,
+optimized for data storage functions that facilitate data access
+and protection.
+Increasing Focus on Total Cost of Ownership and Return on
+Investment.
+IT managers are increasingly focused
+on lowering the total cost of ownership and increasing their
+return on investment on each technology purchase. IT managers
+evaluate total cost of ownership and return on investment based
+upon several metrics, including initial purchase price, ease of
+provisioning, scalability, reliability and redundancy, ease of
+management, IT staff productivity, operating costs and
+after-sale service and support.
+Storage
+Area Networks
+Customers require storage systems that enable them to capture,
+protect, manage and archive data across a variety of storage
+platforms and applications without sacrificing performance.
+Historically, the Small Computer Systems Interface, or SCSI, was
+the primary method of connecting storage to servers.
+Subsequently, the Fibre Channel protocol was developed, which
+enables storage devices to connect to servers over a networked
+architecture, allowing end-users to connect multiple storage
+devices with high bandwidth throughput over long distances and
+centrally manage their storage environment. More recently, the
+Internet SCSI, or iSCSI, protocol has emerged in entry level and
+midrange systems for storage connected via standard local area
+networks, or LANs, and wide area networks, or WANs. Centrally
+managed network storage systems are designed to provide
+connectivity across
+4
+Table of Contents
+multiple operating systems and devices and may be based on
+either open or proprietary technology standards. IDC estimates
+that by 2009, worldwide storage systems hardware, software and
+services revenue will total $82 billion, with disk storage
+systems representing 35.5% of this total, or $29.2 billion.
+IDC also estimates that worldwide storage systems hardware,
+software and services revenue will grow at a 5.6% compound
+annual growth rate, or CAGR, from $61.1 billion in 2004 to
+$82 billion in 2009, and that disk storage systems will
+grow at a 3.7% CAGR from $22.6 billion in 2004 to
+$29.2 billion in 2009.
+Storage area networks, or SANs, apply the benefits of a
+networked approach to data storage applications, allowing large
+blocks of data to move efficiently and reliably between multiple
+storage devices and servers without interrupting normal network
+traffic. SANs provide high scalability, connectivity and
+fault-tolerance, which permit IT managers to create and manage
+centralized pools of storage and backup devices with redundant
+data paths. With the addition of file-sharing software, SANs
+also allow multiple hosts to share consolidated data,
+dramatically reducing the need to duplicate, move and manage
+multiple files in a wide variety of data-intensive applications.
+SANs primarily employ Fibre Channel technology.
+Demand
+for High Performance, Affordable Network Storage
+Solutions
+Customers increasingly demand higher performing, affordable
+solutions to address expanding storage requirements,
+interoperability across disparate systems, the need for improved
+connectivity and rising data management costs. Customers are
+also demanding open standards architecture and modular systems
+that allow them to add capacity as needed. These demands have
+created significant opportunities for network storage system
+solutions that are affordable and provide high performance. In
+general features that were historically only available in high
+end storage systems are increasingly required in entry level and
+midrange systems.
+Reliability
+Perhaps one of the most important requirements for many
+customers is that their stored data is available, and that the
+systems upon which they are stored be reliable. For example,
+internet-related customers can lose significant revenue for
+every minute their sites are inoperable and users cannot access
+data from the web site. Similarly, the operations of corporate
+customers can grind to a halt if precious data is lost or
+unavailable. For these reasons, a storage system�s
+reliability is often the critical factor in making a choice
+among storage systems.
+Our
+Solutions
+We offer a broad line of networked data storage solutions
+composed of standards-based hardware and software for open
+systems environments. Many of the performance attributes and
+other features demanded by high-end/data center end-users are
+incorporated into our products, at prices that are suitable for
+the entry-level or midrange markets. Our end-users consist of
+entry-level and midrange users, requiring cost-effective, easily
+managed, high performance, reliable storage systems. Our product
+lines range from approximately 146 gigabyte, or GB, to complete
+81 TB storage systems. These offerings allow our products to be
+integrated in a modular building block fashion or configured
+into a complete storage solution, increasing OEM flexibility in
+creating differentiated products. Modular products also allow
+our OEM partners to customize solutions, bundling our products
+with value-added hardware, software and services.
+Our products and services are intended to provide users with the
+following benefits:
+�
+Low Total Cost of Ownership and High Return on
+Investment.
+Our products combine reliability,
+flexibility, scalability and manageability into one of the
+smallest form factors in today�s market. Our product set
+provides end-users with a low total cost of ownership due to our
+products� high reliability, the simplicity of our
+�plug-and-play�
+technology, decreased service and support costs and modular
+system approach that allow end-users to add capacity as needed.
+The modular nature of our products addresses our end-users�
+desire for a storage solution that does not require a large,
+upfront investment in a monolithic structure with unused
+capacity. In addition, we believe that our
+R/Evolution & SANnet II storage systems are among
+the most space-efficient in the storage industry, maximizing the
+utilization of our customers� limited space and
+significantly reducing their costs. By extending and leveraging
+5
+Table of Contents
+our customers� installed storage system and architecture,
+we are able to provide solutions that offer both a lower total
+cost of ownership and a higher return on investment.
+�
+Modular Scalability.
+Our products
+are designed using a single cohesive modular architecture that
+allows customers to size and configure storage systems to meet
+their specific requirements. This modular architecture also
+allows customers to easily expand and, in some cases,
+reconfigure a system as their needs change, permitting them to
+extend the useful life of and better utilize their existing
+systems.
+�
+Reliability.
+We believe that high
+reliability is essential to our customers due to the critical
+nature of the data being stored. We offer high reliability in
+our product lines and integrate the latest in technological
+advances to meet expanding market opportunities. We design
+redundancy, high reliability, high performance and ruggedness
+into our R/Evolution & SANnet II storage systems.
+Redundant components have the ability to be replaced while the
+system is online without interrupting network activity. All of
+our SANnet II disk array products currently offered are
+certified to operate under extreme climatic and other harsh
+operating conditions without degradation in reliability or
+performance, as attested to with the NEBS Level 3 and
+MIL-STD-810F certifications. Our R/Evolution 2730 product family
+is targeted at the general purpose market without compromising
+our high reliability standards.
+�
+Open Systems, Multi-Platform
+Support.
+As an independent provider of storage
+products, we are well positioned to provide storage solutions on
+a variety of platforms and operating systems, including Linux,
+Unix and Windows. Our R/Evolution and SANnet II
+product lines support multiple servers using different operating
+systems simultaneously. This multi-platform compatibility allows
+customers to standardize on a single storage system that can
+readily be reconfigured and redeployed at minimal cost as the
+customer�s storage architecture changes.
+�
+Manageability.
+The ability to
+manage storage systems, particularly through software, is a key
+differentiator among storage vendors.
+RAIDar
+tm
+and
+SANscape
+�
+,
+our storage management software for R/Evolution and
+SANnet II products, respectively, enable customers to more
+easily manage and configure their storage systems and respond to
+their changing system requirements.
+�
+Data Management Software.
+We
+introduced our AssuredFamily of data management services, or
+DMS, in conjunction with the launch of our R/Evolution 2730
+product family. As part of our AssuredFamily,
+AssuredSnap
+tm
+enables point in time snapshots of data for usage in realtime
+backups, data mining and disaster avoidance. We expect to launch
+additional DMS solutions in 2007 to further round-out the
+portfolio of data management software for all of our R/Evolution
+based products.
+Our
+Strategy
+Our objective is to focus on profitable growth and capture an
+increasing share of the open systems storage solution market.
+�
+Focus on Profitable Growth.
+We
+have focused our business strategy in several ways to enhance
+our margins and increase profits.
+�
+Utilize indirect sales
+channels.
+We have adopted an indirect sales model
+to access end-user markets primarily through our OEM,
+VAR and SI partners. This allows us to benefit from our
+channel partners� extensive direct and indirect
+distribution networks, installed customer bases and greater
+sales, marketing and global service and support infrastructures.
+The costs associated with a direct worldwide salesforce are
+extensive, and by leveraging the sales networks of our OEM, SI
+and VAR partners we can manage our sales and marketing costs at
+much lower levels. In addition, we encourage our channel
+partners to provide direct support and service to end-users.
+�
+Outsource manufacturing and service
+operations.
+We outsource substantially all of our
+manufacturing operations, which allows us to reduce our
+manufacturing infrastructure, enhance working capital and
+improve margins. In addition, we encourage our channel partners
+to provide support and service directly to end-users.
+�
+Focus on existing customers and develop new
+customer relationships.
+We have an OEM agreement
+with Sun under which Sun resells our products to its customers.
+In addition to Sun, we have other OEM partners, including
+Fujitsu, Motorola, Inc., or Motorola, NEC Corp., or NEC, NetApp,
+ONStor and Stratus Technologies, or Stratus. We intend to
+continue seeking additional OEM relationships with other
+industry leaders to sell current and future products and expand
+the number of products offered to existing OEM partners to
+enable them to address new
+6
+Table of Contents
+markets. Since the second half of 2006, we have started to ship
+products to over a dozen new customers, including Fujitsu,
+[... section truncated at 40,000 chars ...]

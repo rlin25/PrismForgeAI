@@ -89,17 +89,179 @@ debugging surface.
 
 ## 5. Layout Rationale
 
-The UI uses a two-column layout (`st.columns([1, 2])`):
+The UI uses a narrow config column on the left (`st.columns([1, 2])`, left third only) and
+renders the report below the full-width pipeline status block, appearing only after generation
+completes. The two-column split is declared at page level so the config panel keeps its
+narrow footprint, but the right column is left intentionally empty — the report is rendered
+as a full-width section below the `st.status` block after the run completes.
 
-- The left column (weight 1) holds configuration inputs and the run button. It is narrower
-  because the configuration surface is small — one text input, one button, one environment
-  variable warning.
-- The right column (weight 2) holds the report. It is wider because Markdown reports with
-  tables, headers, and lists benefit from horizontal space.
+This differs from the earlier two-column design (documented in v4 initial commit) where the
+report appeared in the right column alongside the config panel. The new layout was chosen
+because the animated stage diagram and topology widget require the full page width to be
+legible — compressing them into a right column at weight-2 would truncate the diagram and
+overflow the topology chips horizontally.
 
-This layout choice is not architecturally significant, but it means the report is always
-visible alongside the configuration inputs — the user does not need to scroll past the
-controls to see the report.
+The report section only renders after `st.session_state["report"]` is populated. There is no
+placeholder or info message in the right column before the first run — an empty right column
+is simpler than a placeholder, and placeholders tend to mislead users about the expected
+output location.
+
+---
+
+## 5a. Animated Pipeline Stage Diagram
+
+The `_diagram_html` function produces a single-line HTML string rendered via
+`st.empty().markdown(..., unsafe_allow_html=True)`. The 6 stages are:
+
+```
+CRAWL → ROUTE → CHUNK → EXTRACT → SYNTHESIZE → REPORT
+```
+
+**Why inline HTML/CSS instead of `st.graphviz_chart` or `st.pyplot`:**
+
+- `st.graphviz_chart` produces a static SVG that cannot animate and requires Graphviz to be
+  installed in the container. More importantly, it cannot be updated in-place during a live
+  run — each update would re-render the full chart, producing visible flash.
+- `st.pyplot` requires a Matplotlib figure, which has no first-class concept of animated
+  state chips. Keeping a figure in memory across 50+ progress events and calling
+  `plt.draw()` repeatedly is brittle and produces Streamlit thread-safety warnings.
+- `st.empty()` with inline HTML gives exact control over color, animation, and chip sizing.
+  The placeholder can be updated in-place (`diagram_ph.markdown(...)`) with no flash because
+  Streamlit diffs the HTML content before writing.
+
+**Stage granularity:** The 6 stages map exactly to the 6 LangGraph pipeline phases that emit
+distinct log messages: `[directory_crawler]` → CRAWL complete, `[router_node]` → ROUTE
+active, `[chunk_node]` → CHUNK active, `[route_matrix_to_workers]` → EXTRACT active,
+`[master_round_table_node] Synthesizing` → SYNTHESIZE active, `[master_round_table_node]
+Report` → SYNTHESIZE complete / REPORT active. Each stage corresponds to a unique log prefix,
+so `_update_stages` can detect transitions without ambiguity.
+
+**CSS pulse animation:** The `active` stage uses
+`animation:pulse 1.5s ease-in-out infinite` defined in the embedded `<style>` block.
+A stage that is visually indistinguishable from idle when active would give no feedback
+during the longest phase (EXTRACT can run for several minutes while 50 workers are
+in-flight). The pulse communicates "the pipeline is running and this stage is live" without
+requiring a separate spinner widget. For demo credibility, a static diagram that never
+changes until the report appears is harder to read than one where the currently-executing
+stage is visually distinct.
+
+**EXTRACT detail line:** While EXTRACT is active, the diagram chip shows a live
+`N/total workers` counter updated from the worker event parser. This uses the same
+`diagram_ph.markdown(...)` update path; no separate DOM element is needed.
+
+---
+
+## 5b. Dynamic Lens Selection Topology Widget
+
+The `_topology_html` function produces a block of colored chips, one chip per lens per
+document, rendered via `topology_ph.markdown(..., unsafe_allow_html=True)`. The widget
+appears below the stage diagram and is populated incrementally as `[router_node]` log
+messages arrive during the ROUTE stage.
+
+**Why colored chips (not a table or text list):**
+
+The Dynamic Semantic Topology (DST) feature — that the router selects a per-document lens
+set rather than applying a fixed set to every document — is the central architectural claim
+of PrismForge AI. Without a visual representation, a demo viewer has no direct evidence that
+routing happened or that different documents received different lens assignments. A colored
+chip grid makes the per-document assignment visible without requiring any explanation: the
+viewer sees that `hp_product_purchase_agreement.txt` received `IP_Ownership`, `IP_Warranty`,
+and `Liability_Cap` while `dot_hill_10k_2006.txt` received `Change_of_Control` and
+`Regulatory_Approval`, and the asymmetry is immediately obvious.
+
+A plain text list (`st.text`) or a table (`st.dataframe`) could convey the same information
+but would require the viewer to read and parse rows. Chips are scannable in under two seconds.
+
+**`_LENS_COLORS` mapping rationale:**
+
+```python
+_LENS_COLORS = {
+    "IP_Ownership":       ("#dbeafe", "#1d4ed8"),   # blue  — IP cluster
+    "IP_Warranty":        ("#dbeafe", "#1d4ed8"),   # blue  — IP cluster
+    "License_Compliance": ("#dcfce7", "#166534"),   # green — compliance cluster
+    "Liability_Cap":      ("#fef3c7", "#92400e"),   # amber — financial risk cluster
+    "Indemnification":    ("#f3e8ff", "#6b21a8"),   # purple — indemnification cluster
+    "Change_of_Control":  ("#ffe4e6", "#9f1239"),   # red   — high-stakes events
+    "Data_Privacy":       ("#e0f2fe", "#0369a1"),   # sky   — regulatory cluster
+    "Regulatory_Approval":("#f0fdf4", "#15803d"),   # light green — regulatory cluster
+}
+```
+
+Lenses within the same risk domain share a hue family (IP lenses are both blue; regulatory
+lenses are both green). This means a document heavy in IP lenses appears predominantly blue,
+giving an immediate visual fingerprint of the document's risk profile. Lenses not in the dict
+fall back to `_DEFAULT_LENS_COLOR` (gray) so unknown or future lenses do not crash the
+renderer.
+
+The colors are drawn from the Tailwind CSS palette used by the stage diagram, ensuring
+visual consistency without a CSS framework dependency.
+
+---
+
+## 5c. Document Preview
+
+The config panel includes collapsible `st.expander` blocks, one per `.txt` file found in
+the data room directory. Each expander shows the first 1,500 characters of the file, followed
+by a character count caption.
+
+**Why 1,500 character truncation:**
+
+1,500 characters is approximately the first two to four paragraphs of an EDGAR filing or
+legal agreement — enough to identify the document type (e.g., "EXHIBIT 10.1 — PRODUCT
+PURCHASE AGREEMENT between HP and Dot Hill") and the parties involved, without displaying
+so much text that the config panel becomes a scrollable document viewer. The truncation
+marker `[... truncated ...]` is appended only when the file is longer than 1,500 characters,
+so short documents display in full.
+
+**Why `st.expander` (not `st.text` inline):**
+
+The config panel must remain compact by default so the run button and key warnings are
+visible above the fold. An expander collapses to a single title line by default, preserving
+vertical space. The user can expand any document they want to inspect before running. Inline
+`st.text` blocks for multiple large files would push the run button off screen, which would
+be especially problematic on smaller displays during a demo.
+
+---
+
+## 5d. Worker Counter (Mutable Dict Pattern)
+
+During the EXTRACT stage, the progress log shows a single updating line:
+
+```
+    Workers: 23/50 complete  |  2 retrying...
+```
+
+This line is not appended on each event — it is mutated in-place by tracking its index in
+the `lines` list. The state is held in a mutable dict `w`:
+
+```python
+w = {"total": 0, "done": 0, "failed": 0, "retrying": 0, "line_idx": None}
+```
+
+**Why a mutable dict instead of nonlocal variables:**
+
+`process_msg` is a nested function defined inside the `if run_button:` block. In Python,
+`nonlocal` requires the variable to be explicitly declared in an enclosing function scope.
+The `if run_button:` block is a conditional block, not a function scope, so `nonlocal` cannot
+be used to rebind integers (`done += 1` inside `process_msg` would require `nonlocal done`
+which is unavailable here). Assigning mutable state to a dict (`w["done"] += 1`) bypasses
+this restriction — dict mutation does not require `nonlocal` because the binding (`w`) is not
+being rebound, only a value inside it is being modified.
+
+**How the line update works:**
+
+When the first `dispatch` event arrives (from a `[route_matrix_to_workers]` log message),
+`worker_summary()` is called and the result is appended to `lines`. The index of that
+appended line is stored as `w["line_idx"]`. On every subsequent `ok`, `retry`, or `failed`
+event, `lines[w["line_idx"]]` is overwritten with the new `worker_summary()` string. When
+`log_ph.code("\n".join(lines), ...)` re-renders, the worker line updates in place rather than
+growing a new line per event.
+
+**Retrying counter:** When a `Rate limited — retrying` log message arrives, `w["retrying"]`
+is incremented. When a `FAILED` message arrives (which follows a final failed retry), the
+retrying counter is decremented by one (`max(0, ...)` guards against underflow from event
+ordering). This gives a live "N retrying..." count that reflects in-progress backoff workers,
+not permanently failed ones.
 
 ---
 
@@ -167,14 +329,16 @@ files are plain text and the MIME type has no functional effect on the download 
 
 ## 10. v5 Touch Points
 
+The following items were listed as v5 work in the initial walkthrough. Progress feedback
+(animated diagram, topology widget, worker counter, document preview) was implemented in the
+v4 UI rebuild and is no longer a v5 item.
+
 - **Streaming render:** The current design collects the full report before rendering.
   v5 would call `graph.astream(...)` inside `run_graph` and yield tokens back to `app.py`.
   `app.py` would use `st.empty()` with incremental `markdown()` updates to show the report
   as it is generated. This requires `run_graph` to become an async generator and `app.py`
-  to drive the stream via `run_until_complete` on a collecting coroutine.
-- **Progress feedback:** A spinner is shown during the entire pipeline run. v5 could replace
-  this with a per-file progress bar by emitting structured progress events from the graph
-  alongside the report.
+  to drive the stream via `run_until_complete` on a collecting coroutine. (Still v5 — report
+  streaming is separate from pipeline-stage progress streaming.)
 - **Multi-run history:** Session state currently stores only the most recent report. A list
   of past runs with their paths and timestamps would let the user compare reports without
   re-running the pipeline.

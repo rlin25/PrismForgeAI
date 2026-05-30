@@ -1,0 +1,516 @@
+SOURCE DOCUMENT: dot_hill_systems_ex_10.1.html
+FILING TYPE: hp_agreement
+EXTRACTED SECTIONS: 20,043 characters
+============================================================
+
+14. Marketing and Licenses
+1
+14.4 Software License
+1
+15. Intellectual Property Ownership Warranty and Indemnification
+2
+15.1 Intellectual Property Ownership
+2
+16. Delaying Causes
+1
+17. Events of Default and Remedies
+1
+18. General Indemnity
+3
+18. General Indemnity
+3
+19. Limitation of Liability
+4
+20. Termination
+5
+21. Additional Obligations of Supplier
+5
+21.5 Social and Environmental Responsibility
+1
+21.6 Product Content
+2
+22. Miscellaneous
+2
+22.5 Assignment
+3
+22.6 No Waiver
+3
+22.14 Disputes/Escalation Process
+5
+HP Confidential
+***Confidential Treatment Requested
+Dot Hill Systems PPA: PRO02542-060507
+EXHIBIT INDEX
+1. Exhibit A � Definitions
+20-24
+2. Exhibit B � Product Description and Specifications
+25
+3. Exhibit C � Eligible Purchasers Under this Agreement
+26-27
+4. Exhibit D � Ordering and Shipment of Product
+28-29
+5. Exhibit E � Pricing
+30
+6. Exhibit F � Engineering Process or Design Changes
+31
+7. Exhibit G � Quality
+32
+8. Exhibit H � Product Returns; Non-Conforming Product
+33
+9. Exhibit I � Manufacturing Rights
+34
+10. Exhibit J � Recipients for Notices and Relationship Managers
+35
+11. Exhibit K � Service and Support Requirements
+36
+12. Exhibit L � Third Party and Open Source Software Components
+37
+13. Exhibit M � Flexibility Agreement
+38
+14. Exhibit N � Quality Compensation Exhibit
+39-42
+15. Exhibit O � Governmental Compliance
+43
+16. Exhibit P � Insurance
+44
+17. Exhibit Q � Industrial Design of the Product
+45
+HP Confidential
+Dot Hill Systems PPA: PRO02542-060507
+PRODUCT PURCHASE AGREEMENT
+AGREEMENT NO. [INSERT # ]
+This PRODUCT PURCHASE AGREEMENT (�Agreement�) is entered into as of the 10
+th
+day
+of September, 2007 (the �
+Effective Date
+�) by and between Hewlett-Packard Company, a Delaware
+corporation having its principal place of business located at 3000 Hanover Street, Palo Alto,
+California 94304 (�HP�), and Dot Hill Systems Corp.(�Supplier�), organized and operating
+under the laws of Delaware with its principal place of business at 2200 Faraday Avenue, Suite
+100, Carlsbad, CA 92008, HP and Supplier are collectively referred to herein as the
+�Parties�.
+RECITALS
+WHEREAS, Supplier wishes to sell, and HP wishes to purchase, goods or services, or both, upon
+the terms and conditions hereinafter provided.
+NOW, THEREFORE, in consideration of the mutual promises and covenants herein contained,
+Supplier and HP hereby agree as follows:
+1.
+Scope of Agreement
+1.1
+Definitions
+.
+Definitions for capitalized terms used in
+this Agreement are set forth either in the main body of this Agreement where used
+or in
+Exhibit A (Definitions)
+.
+1.2
+General.
+The goods to be provided under this Agreement are
+set forth in
+Exhibit B (Product Description and Specifications)
+(the �Goods�).
+Services may be provided under this Agreement (the �Services�) in connection with
+the furnishing of Goods or as primary performance. As used in this Agreement,
+unless the context otherwise requires, �Product� refers interchangeably to any
+Goods or any Services, or both in combination, and �Product� includes both
+singular and plural forms. Product provided by Supplier to HP and Eligible
+Purchasers during the Term will be furnished under this Agreement and will be
+governed by and subject to this Agreement in all cases.
+1.3
+Eligible Purchasers.
+The entities eligible to purchase
+under this Agreement are listed in
+Exhibit C (Eligible Purchasers Under This
+Agreement)
+.
+1.4
+Term of Agreement.
+This Agreement will be effective upon
+execution by the Parties and covers a period (the �Term�) which commences as of
+the Effective Date and continues for one (1) year and thereafter continues unless
+terminated earlier under the terms of this Agreement, provided that in no event
+will this Agreement continue longer than three (3) years from the Effective Date
+unless extended or renewed upon mutual written agreement of the Parties.
+1.5
+Sale and Purchase.
+During the Term, Supplier will produce
+(or procure) and sell to HP, and HP will order and purchase from Supplier, the
+item(s) and volume of Product that HP may order and Supplier may agree to supply
+from time to time. By mutual written agreement the Parties may add or delete
+Products from coverage under this Agreement.
+1.6
+Committed Volume.
+Nothing in this Agreement obligates HP
+to purchase any minimum quantity of Product. This Agreement sets forth the terms
+and conditions during the Term which govern Orders and Acknowledgments for
+Product. Any Order or Acknowledgment or other legally binding volume commitment
+for Product which is entered during the Term will remain governed by this
+Agreement notwithstanding expiration or termination of this Agreement for any
+reason. Unless otherwise agreed, if HP fails, for any reason or no reason, to
+purchase committed volume, Supplier�s sole and exclusive remedy will be to give
+HP written notice of termination except that HP will have up to
+following receipt of Supplier�s notice of termination within which to purchase
+Product at the then current volume rate and pricing.
+HP Confidential
+***Confidential Treatment Requested
+Dot Hill Systems PPA: PRO02542-060507
+1.6.1
+Unless agreed to otherwise in
+Exhibit M (Flexibility Agreement)
+, in
+no event will HP be liable for any monetary damages for failure to
+purchase committed volume; provided that HP will remain obligated to pay
+amounts due and owing under Sections 3.2 (Payment Terms) and 3.4 (Sales
+Taxes and Duties). Unless otherwise agreed, if Supplier is unable, for
+any reason or no reason, to furnish or delays furnishing committed
+volume, HP may purchase such committed volume, or any part thereof, from
+other source(s), and such purchase(s) will be aggregated with purchases
+hereunder for purposes of determining HP�s compliance with this
+Agreement.
+2.
+Ordering and Shipment of Product.
+Ordering and Shipment of Product terms are set
+forth in
+Exhibit D (Ordering and Shipment of Product)
+.
+3.
+Prices and Payment Terms.
+Prices, payment terms and other pricing terms will be as
+follows:
+3.1
+Prices.
+Prices for Product are as set forth in
+Exhibit E
+(Pricing)
+.
+3.2
+Payment Terms.
+Payments will be issued
+after
+receipt of a valid invoice or receipt of the Goods or Services, whichever is
+later. No invoice may be dated or submitted earlier than date of Delivery. Any
+prompt payment discount will be calculated from the same date. Payment will be
+in U.S. currency unless otherwise stated.
+3.3
+Discounts and Rebates.
+Discounts and rebates may be
+negotiated by the Parties from time to time during the Term.
+3.4
+Sales Tax and Duties.
+Unless otherwise agreed, prices are
+exclusive of all taxes or duties (other than taxes levied on Supplier�s income)
+that Supplier may be required to collect or pay upon purchase, sale or shipment
+of Product. Any such taxes or duties must appear as a separate item on
+Supplier�s invoice.
+Where
+applicable, HP will provide Supplier with an exemption resale certificate.
+3.5
+Financial Condition.
+Except for HP Subsidiaries and HP
+Affiliates, any credit line extended to an Eligible Purchaser will be subject to
+Supplier�s normal credit standards and approval procedures in effect from time to
+time during the Term.
+3.5.1
+HP may review Supplier�s performance capability under
+this Agreement at HP�s discretion, and Supplier will make available to HP,
+upon written request, information as may be reasonable, customary and
+sufficient to show Supplier�s then current performance capability,
+including financial condition. If the financial condition of either Party
+materially and adversely changes from its financial condition as of the
+date of this Agreement, then the other Party will have the right to demand
+adequate assurance of due performance.
+3.6
+Invoices.
+HP may require Supplier to submit invoices
+electronically, at Supplier�s sole expense, in which case Supplier is thereby
+authorized to, and will, transmit the required information in electronic format.
+HP may utilize a third party, at HP�s sole discretion, to facilitate HP�s order
+and invoicing processes that may entail disclosure of information about the
+Supplier, this Agreement, and the receipt and processing of any purchase order,
+invoice and related documentation.
+3.7
+Right of Offset. Either party, at its option, shall have the right
+to setoff or deduct from the other party�s invoice any credits, refunds or claims
+of any kind, provided that: (i) the party subject to the setoff or deduction has
+had forty-five (45) days from notice of the amounts due to make payment but fails
+to do so, and; (ii) the party subject to the setoff or deduction has confirmed,
+in writing or by email, the amount and the validity of the credit, refund or
+claim.
+4.
+Competitive Pricing.
+HP Confidential
+***Confidential Treatment Requested
+Dot Hill Systems PPA: PRO02542-060507
+4.1
+General.
+Supplier will maintain competitive pricing of Products for HP
+throughout the Term.
+4.2
+Competitive Offerings.
+At any time during the Term, unless
+otherwise agreed, HP may notify Supplier that HP has received a bona fide offer
+to deliver Product, or a substantial equivalent, under written contract in
+approximately comparable volume, mix, service level and duration of committed
+sale as the undelivered or unperformed portion of any committed volume under this
+Agreement at pricing lower than pricing in effect under this Agreement or at
+lower total cost to HP. If
+of the date of such notice
+Supplier does not reduce its pricing sufficiently to meet the terms of such offer
+and advise HP of such reduction, HP may purchase from such offer any or all of
+the undelivered or unperformed portion of any committed volume under this
+Agreement. The quantity so purchased will be deleted from any HP purchase
+requirements. Anything in the foregoing to the contrary notwithstanding, this
+provision will not apply to
+4.3
+Pricing.
+At any time during the Term, unless
+otherwise agreed,
+, Supplier will
+, unless prohibited by Applicable
+Law,
+.
+4.4
+New Product Offerings.
+At any time during the Term HP may
+notify Supplier that HP has received a bona fide offer to deliver goods which
+have superior technical specifications or superior attributes or capabilities as
+compared with Product, and to the extent it deems itself able to do so, HP may
+provide specifics so that Supplier may revise specifications for Product or
+otherwise offer such substitute goods to HP hereunder. If within a commercially
+reasonable time after such notice Supplier is unable to sell or fails to offer to
+sell HP Product with revised specifications (which are acceptable to HP) or such
+substitute goods at reasonable pricing and otherwise meeting the terms of such
+offer, HP may purchase from such offeror any or all of the undelivered or
+unperformed portion of any committed volume under this Agreement. The quantity
+so purchased will be deleted from HP�s purchase requirements.
+5.
+Inspection and Audit Rights.
+5.1
+Inspection and Audit Rights.
+HP, at its expense, may
+engage an independent third party (�
+Auditor
+�) to inspect and audit, on an annual
+basis, or more frequently if Supplier has breached any of its obligations under
+this Agreement, Supplier�s books and records relating to Supplier�s performance
+of its obligations under this Section 5.1 and that are reasonably required to
+determine Supplier�s compliance with Supplier�s obligations under this Section
+5.1.
+5.1.1 HP will provide Supplier reasonable notice, not less
+than
+in advance, of such inspection and audit.
+5.1.2 Supplier will refund the amount of any overcharge or
+other discrepancy as may reasonably be determined by such inspection and
+audit, and if the final report of such inspection and audit reveals an
+overcharge or other discrepancy of five percent (5%) or more during the
+relevant time period, Supplier will also reimburse HP for all reasonable
+costs of the inspection and audit.
+5.1.3 Supplier will cooperate fully with all such inspection
+and audit requests; provided that (i) in no event will material containing
+any information that is protected under court order or the written
+directions of regulatory authorities be required to be disclosed and (ii)
+material may be redacted by Supplier to the extent necessary to protect
+against any invasion of personal privacy.
+HP Confidential
+***Confidential Treatment Requested
+Dot Hill Systems PPA: PRO02542-060507
+5.1.4 Any such Auditor will execute a confidentiality
+agreement in favor of Supplier containing terms no less restrictive than
+those set forth in Section 13 of this Agreement prior to receipt of any of
+the information referenced above; provided that such Auditor may disclose
+such information only to HP and Supplier; and provided further that (i) the
+identity of Supplier�s other customers, details of specific customer
+transactions and actual costs incurred by Supplier will not be disclosed to
+HP and (ii) aggregated pricing, aggregate costs and other information not
+identifiable to an individual or source may be disclosed to HP. HP�s right
+of inspection and audit under this Section 5 (Audit Rights) will continue
+and survive for
+after expiration or any termination of this
+Agreement.
+6.
+Engineering Process, Design Changes and Quality.
+Terms pertaining to engineering
+process and/or design changes for the Product are set forth in
+Exhibit F (Engineering
+Process or Design Changes)
+.
+6.1
+Quality.
+Supplier will maintain the quality system
+specified in
+Exhibit G (Quality)
+of this Agreement.
+7.
+Warranties.
+7.1
+Product General Warranties.
+Supplier represents and
+warrants that all Product will:
+7.1.1
+Be manufactured, processed, and assembled by Supplier
+or Supplier�s authorized Subcontractors.
+7.1.2
+Conform to Specifications, including without
+limitation, HP�s General Specification for the Environment.
+7.1.3
+Be new,
+7.1.4
+Contain first-quality components, raw materials and parts.
+7.1.5
+Be free from defects in design, material and workmanship.
+7.1.6
+Be free and clear of all liens, encumbrances,
+restrictions, and other claims against title or ownership.
+7.1.7
+Comply with the intellectual property warranty terms
+set forth in Section 15 (Intellectual Property Ownership Warranty and
+Indemnification).
+7.2
+Warranty Periods.
+7.2.1
+All warranties set forth in Section 7.1 will survive
+any inspection, delivery, acceptance or payment by HP.
+7.2.2
+The warranties set forth in sub-sections 7.1.2 and
+7.1.5 are effective upon Delivery, are continuing, and will remain in
+effect for and expire
+following Supplier�s delivery of the Product
+(�Product Warranty Period�).
+7.2.3
+The warranties set forth in Sections 7.1.1, 7.1.3,
+7.1.4 and 7.1.6 are made and effective at Delivery.
+7.3
+Services and Support Warranty.
+Supplier warrants that all
+Services and Support will be provided in a professional and workmanlike manner by
+competent, experienced personnel possessing suitable expertise in the subject
+matter.
+7.4
+Warranty.
+Supplier warrants that Product
+[...***...].
+HP Confidential
+***Confidential Treatment Requested
+Dot Hill Systems PPA: PRO02542-060507
+7.5
+Compliance with Applicable Law.
+Supplier warrants that it
+will comply with all Applicable Law in its performance under this Agreement.
+7.6
+Warranty Exclusions.
+Except for Sections 7.1.6 and 7.1.7,
+the warranties set forth in this Section 7 will not apply to any Product to the
+extent such Product does not function property as a result of: (i) has been
+improperly installed, repaired, altered or otherwise modified (other than by
+Supplier or Supplier�s Subcontractors), (ii) has been subjected to misuse, abuse,
+negligence or accident, (other than by Supplier or Supplier�s Subcontractors).
+7.7
+Warranty Remedies.
+If, during the Product Warranty Period,
+Products are found to breach any warranty specified in this Agreement, then in
+addition to any other remedies expressly provided for in this Agreement, HP may
+return Products to Supplier
+for repair or replacement (in
+Supplier�s discretion), or if neither alternative is available on commercially
+reasonable terms, credit. Any Product corrected or furnished in replacement
+shall, from the date of delivery of those replacement Products, be subject to the
+provisions of this Sub-Section and Section 7 for
+from the date of
+delivery or the remaining period of the original Product Warranty Period,
+whichever is longer. The remedy set forth in this section 7.7 shall be the sole
+and exclusive remedy for a breach of the warranties set forth herein.
+7.8
+Disclaimer of Warranties
+. EXCEPT AS EXPLICITLY STATED
+HEREIN, THERE ARE NO WARRANTIES, EXPRESS. IMPLIED OR OTHERWISE, PROVIDED OR MADE,
+AND ALL PRODUCTS, SERVICES OR OTHER ITEMS ARE PROVIDED �AS IS� AND WITHOUT ANY
+WARRANTIES. SUPPLIER HEREBY DISCLAIMS ALL IMPLIED WARRANTIES, INCLUDING, WITHOUT
+LIMITATION, THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NON-INFRINGEMENT OF THIRD PARTY RIGHTS.
+8.
+Epidemic Failure Warranty.
+Supplier also represents and warrants that during the
+Product Warranty Period, all Product will comply with the terms of the warranty against
+Epidemic Failure as set forth in
+Exhibit N (Quality Compensation)
+. In the event that
+Supplier breaches this warranty, HP shall have the remedies set forth in
+Exhibit N
+(Quality and Compensation)
+, in addition to any other remedies available under this
+Agreement.
+9.
+Safety.
+If the Goods supplied hereunder, or Services performed hereunder,
+involve any risk of injury or death to persons, or damage to property, Supplier shall
+provide notice to the appropriate individuals identified in
+Exhibit J (Recipients for
+Notices)
+and follow the procedures set forth in Section 4 of
+Exhibit F (Engineering
+Process or Design Changes)
+, as well as any other applicable provisions in this
+Agreement. Supplier shall also provide HP with a written description of the nature and
+extent of such risk, including a description of any precautions which should be taken to
+minimize risk.
+10.
+Product Returns; Non-Conforming Product.
+Terms pertaining to product returns
+and/or non-conforming Product are set forth in
+Exhibit H (Product Returns;
+Non-Conforming Product)
+.
+11.
+Support; Other Services.
+11.1
+General.
+Supplier will maintain such number of qualified
+personnel and do all that is necessary to satisfy the Support and service level
+obligation set forth in
+Exhibit K (Service and Support Requirements).
+11.2
+HP Property.
+HP may loan to Supplier HP Property solely
+for use in providing Services, Support or in Supplier�s manufacturing, testing or
+adapting Product. All HP Property will be segregated from Supplier�s property
+and identified as the sole property of HP. HP Property may not be transferred,
+assigned, loaned or otherwise encumbered by Supplier in any way. HP Property may
+be loaned to third parties for fulfillment of Supplier�s obligations hereunder
+only upon HP�s prior written consent, provided that Supplier assumes all
+responsibility and liability for the HP Property, as set forth herein, while in
+the possession of such third parties. Supplier will return, at its expense, HP
+Property in good condition, reasonable wear and tear excepted, upon HP�s request
+or in all events
+HP Confidential
+***Confidential Treatment Requested
+Dot Hill Systems PPA: PRO02542-060507
+upon termination or expiration of this Agreement. Prior to HP Property being
+loaned to Supplier, Supplier will execute HP�s standard Equipment Loan
+Agreement.
+11.3
+Survival of Support Obligations.
+Unless otherwise stated
+in
+Exhibit K (Service and Support Requirements)
+, Supplier�s obligations to
+provide Support will continue throughout the Term and for
+after the last
+Delivery of Product under this Agreement, even if this Agreement is terminated or
+expires.
+11.3.1
+Supplier may not discontinue Support for Product for which manufacture or
+supply is discontinued in accordance with
+Exhibit I (Discontinuance of
+Product and Manufacturing Rights).
+In addition, if HP issues notice to
+Supplier that HP is ending the life of a Product, Supplier must continue to
+provide Support pursuant to this section.
+11.3.2
+In the event of any expiration or termination of this Agreement Supplier
+may
+[...***...].
+11.4
+Supplier Support o
+[... truncated to fit API rate limits ...]

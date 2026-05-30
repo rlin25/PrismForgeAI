@@ -927,6 +927,24 @@ The dedicated thread owns a completely isolated event loop. LangGraph's task sch
 
 ---
 
-*Document Version: v13 — Post-Implementation*
-*Patches applied: Router collapse (3.15), Blind spot demotion (3.16), summary_store state field + merge reducer, worker async fix, ExtractionRecord return type, Streamlit async bridge, topology diagram corrected, Chroma removal, extraction_worker state parameter removed + semantic_summary moved to WorkerPayload (v8), extraction_worker try/except added (v8), sub-graph topology diagram annotation corrected to match v8 worker contract (v9), route_matrix_to_workers signature fixed from illegal two-parameter edge function to single-parameter DocumentSubState edge function reading semantic_summary from sub-graph state (v9), sub-graph diagram split into two explicit handoff moments to eliminate single-node conflation ambiguity (v10), compress_inbox() record-count guard added to 3.10 with 500-record threshold and implied_liability_score sort (v10), pre-fan-out Handoff Moment 1 removed — route_matrix_to_workers reads semantic_summary from DocumentSubState not ParentState; single post-workers handoff now writes both summary_store and global_inbox atomically; diagram note, Decision 3.3, constraint checklist, and Phase 2 sprint blueprint updated accordingly (v11), post-implementation decisions 3.17–3.22 added: monolithic pipeline.py rationale, flat graph vs sub-graphs architectural deviation, asyncio.gather vs LangGraph Send for workers, three system prompt constants, gemini-2.0-flash → gemini-2.5-flash model update, aiohttp version incompatibility (v12)*
+### 3.24 Extraction Worker Rate-Limit Retry Backoff
+
+**Problem:** Anthropic Tier 1 accounts cap at 50 requests per minute. With 50+ extraction workers
+firing simultaneously, the majority receive 429 RESOURCE_EXHAUSTED errors and return empty
+local_inbox entries, silently degrading report quality.
+
+**Selected Paradigm:** Exponential backoff retry inside extraction_worker — up to 3 attempts,
+waiting 15 seconds after the first 429 and 30 seconds after the second before giving up.
+Rate-limit detection checks for "429" or "rate_limit" in the error string. Non-rate-limit
+exceptions still fail immediately (Invariant X4 preserved).
+
+**Rejected Alternative:** Module-level asyncio.Semaphore to throttle concurrent workers.
+Rejected because Invariant S2 prohibits module-level Semaphore — it causes RuntimeError
+when attached to a different event loop. The retry approach handles the burst naturally
+without requiring coordination at dispatch time.
+
+---
+
+*Document Version: v14 — Post-Implementation*
+*Patches applied: Router collapse (3.15), Blind spot demotion (3.16), summary_store state field + merge reducer, worker async fix, ExtractionRecord return type, Streamlit async bridge, topology diagram corrected, Chroma removal, extraction_worker state parameter removed + semantic_summary moved to WorkerPayload (v8), extraction_worker try/except added (v8), sub-graph topology diagram annotation corrected to match v8 worker contract (v9), route_matrix_to_workers signature fixed from illegal two-parameter edge function to single-parameter DocumentSubState edge function reading semantic_summary from sub-graph state (v9), sub-graph diagram split into two explicit handoff moments to eliminate single-node conflation ambiguity (v10), compress_inbox() record-count guard added to 3.10 with 500-record threshold and implied_liability_score sort (v10), pre-fan-out Handoff Moment 1 removed — route_matrix_to_workers reads semantic_summary from DocumentSubState not ParentState; single post-workers handoff now writes both summary_store and global_inbox atomically; diagram note, Decision 3.3, constraint checklist, and Phase 2 sprint blueprint updated accordingly (v11), post-implementation decisions 3.17–3.22 added: monolithic pipeline.py rationale, flat graph vs sub-graphs architectural deviation, asyncio.gather vs LangGraph Send for workers, three system prompt constants, gemini-2.0-flash → gemini-2.5-flash model update, aiohttp version incompatibility (v12), Decision 3.24 added: extraction_worker rate-limit retry backoff — up to 3 attempts, 15s/30s waits on 429 errors, module-level Semaphore rejected per Invariant S2 (v14)*
 *Target Consumer: Claude Sonnet 4.5+ for implementation code synthesis*

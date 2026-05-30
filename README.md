@@ -102,6 +102,8 @@ This project began with domain learning, not code. The approach was:
 
 6. **Feedback loop.** After initial implementation, every structural deviation from the original spec was documented explicitly in `DESIGN.md` decisions 3.17–3.22 and reconciled against the interface contract. A second pass rewrote `pipeline.py` to the spec-compliant sub-graph architecture. The design documents track both the original deviations (as decision history) and the current state.
 
+7. **Post-deployment improvements.** After deployment, several targeted improvements were made: an animated 6-stage pipeline diagram with live stage activation (CRAWL → ROUTE → CHUNK → EXTRACT → SYNTHESIZE → REPORT), a dynamic lens selection topology widget showing per-document colored chips as routing completes, a live worker counter ("Workers: 23/50 complete | 2 retrying..."), document preview expanders in the config panel, extraction worker retry backoff for Anthropic Tier 1 rate limits (Decision 3.24), and replacement of synthetic fixture files with real EDGAR documents (HP/Dot Hill). All changes were reconciled against the design documents incrementally.
+
 All architectural judgment belongs to the developer. Claude provided Socratic pressure — it asked the questions that forced the design to be more precise — but it did not make decisions. The invariants, the schema choices, the decision to eliminate sub-graphs, the choice of a flat monolithic `pipeline.py` over a `src/` module tree: these are all deliberate human decisions with documented rationale.
 
 The code is intentionally disposable. `pipeline.py` is a monolith by design: in a 10-hour sprint, module decomposition has a negative return. When test coverage warrants it, the decomposition into `src/schemas.py`, `src/nodes.py`, `src/graph.py`, and `src/prompts.py` is straightforward — `app.py` imports only `run_graph`, so the split does not cross file boundaries. The design documents outlast any particular implementation structure.
@@ -181,10 +183,10 @@ streamlit run app.py
 
 ### Demo flow
 
-1. Convert the raw EDGAR source filings to clean plain-text: `python3 preprocess.py`. This reads `.htm` files from `source_docs/` and writes preprocessed `.txt` files to `data_room/`.
-2. Open the Streamlit UI. Enter the absolute path to your data room directory (default: `./data_room`).
-3. Click Run. The spinner will be active while the pipeline executes: crawler → router phase → extraction matrix → synthesis.
-4. The risk report renders as Markdown in the UI. Use the download button to save it.
+1. Convert the raw EDGAR source filings to clean plain-text: `python3 preprocess.py`. This reads `.htm` files from `source_docs/` and writes preprocessed `.txt` files to `data_room/`. The data room contains real EDGAR documents: the HP/Dot Hill Product Purchase Agreement (EX-10.1) and the Dot Hill FY2006 10-K.
+2. Open the Streamlit UI. Enter the absolute path to your data room directory (default: `./data_room`). Expand the document preview expanders in the config panel to inspect the first 1,500 characters of each file before running.
+3. Click Run. The animated 6-stage pipeline diagram activates: stages (CRAWL → ROUTE → CHUNK → EXTRACT → SYNTHESIZE → REPORT) turn green as each completes. As routing finishes, colored lens chips appear per document in the topology widget, showing which extraction lenses were assigned to each file (the Dynamic Semantic Topology feature made visible). A live worker counter updates the extraction progress ("Workers: N/M complete | K retrying...").
+4. The risk report renders as Markdown below the pipeline diagram only after generation completes. Use the download button to save it.
 5. Check the Coverage Gaps section. Any file that was read but produced no extraction records will be listed there explicitly.
 
 ### API key notes

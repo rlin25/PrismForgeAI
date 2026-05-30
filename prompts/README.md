@@ -23,6 +23,8 @@ Each prompt corresponds to a phase of the project. Read them in the order they w
 | 5 | `05_generate_diagrams.md` | Post-implementation | Mermaid diagrams added to `walkthrough/README.md` and `README.md` — the file-flow diagram and the high-level architecture diagram |
 | 6 | `06_readme_generation.md` | Post-implementation | `README.md` and this file — the public-facing project README and this prompts index |
 
+A second batch run (Steps 5 & 6 only) was performed as an incremental update after post-deployment improvements were made to the codebase. That run made targeted updates to `README.md` and this file only — no documents were rewritten from scratch. The improvements covered by that update: animated 6-stage pipeline diagram with live stage activation, dynamic lens selection topology widget (colored chips per document), live worker counter, document preview expanders in the config panel, extraction worker retry backoff for Anthropic Tier 1 rate limits (Decision 3.24 in `DESIGN.md`), and replacement of synthetic fixture files with real EDGAR documents (HP/Dot Hill Product Purchase Agreement and Dot Hill FY2006 10-K).
+
 ## The argument
 
 Code is the least durable artifact in a software project. It changes with every refactor, every dependency upgrade, every architectural revision. What persists is the reasoning: why the system is shaped the way it is, what was considered and rejected, what constraints are non-negotiable and why.
