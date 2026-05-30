@@ -99,8 +99,12 @@ class WorkerPayload(BaseModel):
 router_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
 structured_router = router_llm.with_structured_output(RouterOutput)
 
-llm = ChatAnthropic(model="claude-sonnet-4-20250514")
-structured_llm = llm.with_structured_output(UniversalForm)
+# Extraction workers use Haiku — mechanical evidence-finding at 1,000 RPM Tier 1
+# Synthesis uses Sonnet — cross-document reasoning quality matters there
+extraction_llm = ChatAnthropic(model="claude-haiku-4-5-20251001")
+structured_llm = extraction_llm.with_structured_output(UniversalForm)
+
+llm = ChatAnthropic(model="claude-sonnet-4-20250514")  # synthesis only
 
 # Chunker singleton (Decision 3.5, Invariant C1): chunk_size is characters, not tokens
 splitter = RecursiveCharacterTextSplitter(chunk_size=4000, chunk_overlap=800)
