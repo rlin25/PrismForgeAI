@@ -1,5 +1,7 @@
 # PrismForge AI v4
 
+**🔗 Live demo: [prismforgev4.net](http://prismforgev4.net)**
+
 Good software is designed before it is written. PrismForge AI v4 was built on that premise: the architecture was locked down through a structured Socratic process — problem framing, schema specification, invariant definition, interface contract — before a single line of production code was committed. The code is the last artifact, not the first.
 
 ---
@@ -141,6 +143,8 @@ The code is intentionally disposable. `pipeline.py` is a monolith by design: in 
 ---
 
 ## Setup and Demo
+
+A live instance is deployed at **[prismforgev4.net](http://prismforgev4.net)**. To run your own instance, follow the steps below.
 
 ### Prerequisites
 
