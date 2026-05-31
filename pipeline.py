@@ -15,6 +15,9 @@ from pathlib import Path
 from operator import add
 from typing import Annotated, Any, Callable, Dict, List, Tuple
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # ── Progress logging hook ─────────────────────────────────────────────────────
 # Defaults to print. app.py replaces this with a queue callback for live UI.
 _log_fn: Callable[[str], None] = print

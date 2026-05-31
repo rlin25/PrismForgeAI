@@ -1,6 +1,6 @@
 """
 PrismForge AI v4 — Streamlit Frontend
-Async bridge: ThreadPoolExecutor + fresh event loop (Decision 3.23).
+Async bridge: one persistent event loop on a daemon thread (Decision 3.23).
 Progress feed: queue.SimpleQueue. Animated stage diagram via inline HTML.
 """
 
@@ -9,8 +9,12 @@ import concurrent.futures
 import os
 import queue
 import re
+import threading
 import time
 from pathlib import Path
+
+from dotenv import load_dotenv
+load_dotenv()
 
 import streamlit.components.v1 as components
 
@@ -281,15 +285,39 @@ def _update_stages(raw: str, stages: dict) -> bool:
 
 # ── Pipeline runner ───────────────────────────────────────────────────────────
 
+# One persistent event loop for the whole process. The module-level LLM clients
+# in pipeline.py (ChatGoogleGenerativeAI / ChatAnthropic) cache keep-alive httpx
+# connections bound to the loop that first used them. Creating and closing a fresh
+# loop per run orphans those connections; the next run's connection-pool cleanup
+# then calls loop.call_soon() on the closed loop → "RuntimeError: Event loop is
+# closed". A single never-closed loop keeps the pools valid across runs.
+_LOOP: asyncio.AbstractEventLoop | None = None
+_LOOP_LOCK = threading.Lock()
+
+
+def _get_persistent_loop() -> asyncio.AbstractEventLoop:
+    global _LOOP
+    with _LOOP_LOCK:
+        if _LOOP is None or _LOOP.is_closed():
+            _LOOP = asyncio.new_event_loop()
+            threading.Thread(
+                target=_LOOP.run_forever,
+                name="pipeline-loop",
+                daemon=True,
+            ).start()
+        return _LOOP
+
+
 def _run_pipeline(directory_path: str, progress_q) -> str:
     _pipeline._log_fn = progress_q.put_nowait
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        loop = _get_persistent_loop()
+        fut = asyncio.run_coroutine_threadsafe(run_graph(directory_path), loop)
         try:
-            return loop.run_until_complete(run_graph(directory_path))
-        finally:
-            loop.close()
+            return fut.result(timeout=600)
+        except concurrent.futures.TimeoutError:
+            fut.cancel()
+            raise
     finally:
         _pipeline._log_fn = print
 
